@@ -126,8 +126,8 @@
 </T.Mesh>
 
 <!-- Bender Tool Pivot Group -->
-<!-- Rotates clockwise (-Z) around the center of the bend radius (0, 4, 0) -->
-<T.Group position={[0, 4, 0]} rotation.z={-bendAngle * (Math.PI / 180)}>
+<!-- Rotates clockwise (-Z) around the center of the bend radius (0, 4, 0), and rotated 180 degrees on Y axis -->
+<T.Group position={[0, 4, 0]} rotation.z={-bendAngle * (Math.PI / 180)} rotation.y={Math.PI}>
   
   <!-- Bender Shoe (The curved blue part) -->
   <T.Mesh rotation.z={-Math.PI / 2} castShadow>
