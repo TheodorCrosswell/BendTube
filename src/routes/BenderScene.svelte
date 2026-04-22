@@ -57,25 +57,33 @@
     getPoint(t: number, optionalTarget = new THREE.Vector3()) {
       const angleRad = this.angleDeg * (Math.PI / 180);
       const R = 4; // Bending radius
-      const L1 = 15; // Straight back section length
-      const L2 = 15; // Straight forward section length
+      const L1 = 15; // Straight back section length (anchored at shoe)
+      const L2_initial = 15; // Initial straight forward section length
+      
+      // REAL-WORLD EMT MATH:
+      // The pipe doesn't stretch. The arc consumes straight pipe (Developed Length = R * theta).
+      // We shrink the forward straight section by the exact length of the arc.
       const arcLen = R * angleRad;
-      const totalLen = L1 + arcLen + L2;
+      const L2 = L2_initial - arcLen; 
+      
+      // The physical total length remains perfectly constant at all times (15 + 15 = 30)
+      const totalLen = L1 + L2_initial; 
       const d = t * totalLen;
 
       if (d <= L1) {
-        // Back straight
+        // Back straight (Remains flat and stationary relative to the floor)
         return optionalTarget.set(-L1 + d, 0, 0);
       } else if (d <= L1 + arcLen) {
         // Arc (Bend)
-        const theta = ((d - L1) / arcLen) * angleRad;
+        // Distance along the arc is (d - L1). Angle theta = arcDistance / Radius
+        const theta = (d - L1) / R;
         return optionalTarget.set(
           R * Math.cos(-Math.PI / 2 + theta),
           R + R * Math.sin(-Math.PI / 2 + theta),
           0
         );
       } else {
-        // Forward straight
+        // Forward straight (Pulls back/shortens visually as pipe wraps into the bend)
         const straightD = d - (L1 + arcLen);
         const endAngle = -Math.PI / 2 + angleRad;
         const px = R * Math.cos(endAngle);
@@ -106,10 +114,26 @@
   <OrbitControls enableDamping target={[0, 2, 0]} enabled={!isDragging} />
 </T.PerspectiveCamera>
 
-<!-- Floor Grid -->
-<!-- Threlte Extras v9+ makes Grid infinitely scalable implicitly with fadeDistance -->
+<!-- 3D Coordinate Grids -->
+<!-- XZ Plane (Horizontal floor, y=0) -->
 <Grid 
-  position.y={-4} 
+  position={[0, 0, 0]} 
+  sectionColor="#888888" 
+  cellColor="#444444" 
+  fadeDistance={50} 
+/>
+<!-- XY Plane (Vertical facing Z, rotated 90deg on X axis) -->
+<Grid 
+  position={[0, 0, 0]} 
+  rotation.x={Math.PI / 2}
+  sectionColor="#888888" 
+  cellColor="#444444" 
+  fadeDistance={50} 
+/>
+<!-- YZ Plane (Vertical facing X, rotated 90deg on Z axis) -->
+<Grid 
+  position={[0, 0, 0]} 
+  rotation.z={Math.PI / 2}
   sectionColor="#888888" 
   cellColor="#444444" 
   fadeDistance={50} 
