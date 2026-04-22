@@ -4,7 +4,8 @@
   import { OrbitControls, Grid, interactivity } from '@threlte/extras';
   import * as THREE from 'three';
 
-  let { bendAngle = $bindable(0) } = $props();
+  // Added isOrthographic prop
+  let { bendAngle = $bindable(0), isOrthographic = false } = $props();
 
   // Enable Threlte's raycasting interactivity for pointer events (v8/v9 syntax)
   interactivity();
@@ -108,11 +109,18 @@
 <T.AmbientLight intensity={0.8} />
 <T.DirectionalLight position={[10, 15, 10]} intensity={1.5} castShadow />
 
-<!-- Camera & Navigation -->
-<T.PerspectiveCamera makeDefault position={[0, 5, 25]} fov={45}>
-  <!-- Disable OrbitControls while dragging the handle -->
-  <OrbitControls enableDamping target={[0, 2, 0]} enabled={!isDragging} />
-</T.PerspectiveCamera>
+<!-- Camera & Navigation Toggle -->
+{#if isOrthographic}
+  <!-- zoom factor controls scale, zoom=40 roughly equals the scale of a perspective cam at distance 25 -->
+  <T.OrthographicCamera makeDefault position={[0, 5, 25]} zoom={40}>
+    <!-- Disable OrbitControls while dragging the handle -->
+    <OrbitControls enableDamping target={[0, 2, 0]} enabled={!isDragging} />
+  </T.OrthographicCamera>
+{:else}
+  <T.PerspectiveCamera makeDefault position={[0, 5, 25]} fov={45}>
+    <OrbitControls enableDamping target={[0, 2, 0]} enabled={!isDragging} />
+  </T.PerspectiveCamera>
+{/if}
 
 <!-- 3D Coordinate Grids -->
 <!-- XZ Plane (Horizontal floor, y=0) -->
