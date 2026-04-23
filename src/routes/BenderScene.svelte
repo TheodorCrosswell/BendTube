@@ -226,6 +226,7 @@
   </T.Mesh>
 
   <T.Group 
+    rotation.z={Math.PI / 6}
     onpointerdown={onPointerDown} 
     onpointerenter={() => document.body.style.cursor = 'grab'} 
     onpointerleave={() => { if (!isDragging) document.body.style.cursor = 'default'; }}
