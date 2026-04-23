@@ -1,6 +1,5 @@
 <script lang="ts">
 	import './layout.css';
-	import favicon from '$lib/assets/favicon.svg';
 	import { onMount } from 'svelte';
 	import { updated } from '$app/state'; // Use SvelteKit's built-in update store
 
@@ -16,5 +15,5 @@
 	});
 </script>
 
-<svelte:head><link rel="icon" href={favicon} /></svelte:head>
+<svelte:head></svelte:head>
 {@render children()}
