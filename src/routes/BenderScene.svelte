@@ -30,6 +30,12 @@
   // 2. Initialize with undefined instead of null to satisfy Threlte's expected type
   let tubeGeom = $state<THREE.TubeGeometry | undefined>(undefined);
 
+  // --- Derived Tool Position ---
+  // The bender must roll backward along the stationary pipe.
+  // The distance it rolls equals the arc length of the bend: arcLen = radius * angleInRadians.
+  let angleRad = $derived(bendAngle * (Math.PI / 180));
+  let benderX = $derived(-4 * angleRad);
+
   // --- Dragging Logic ---
   let isDragging = $state(false);
   let startX = $state(0);
@@ -153,18 +159,22 @@
       const d = t * totalLen;
 
       if (d <= L1) {
-        return optionalTarget.set(-L1 + d, 0, 0);
+        // Keep the left straight part locked stationary on the floor.
+        // It starts exactly at -L1_initial and gets effectively shorter as it gets consumed by the bend.
+        return optionalTarget.set(-L1_initial + d, 0, 0);
       } else if (d <= L1 + arcLen) {
+        // The arc's center physically rolls backward along the X-axis by `-arcLen`
         const theta = (d - L1) / R;
         return optionalTarget.set(
-          R * Math.cos(-Math.PI / 2 + theta),
+          -arcLen + R * Math.cos(-Math.PI / 2 + theta),
           R + R * Math.sin(-Math.PI / 2 + theta),
           0
         );
       } else {
+        // The bent continuation is translated backward as well to stay connected continuously 
         const straightD = d - (L1 + arcLen);
         const endAngle = -Math.PI / 2 + angleRad;
-        const px = R * Math.cos(endAngle);
+        const px = -arcLen + R * Math.cos(endAngle);
         const py = R + R * Math.sin(endAngle);
         return optionalTarget.set(
           px + straightD * Math.cos(angleRad),
@@ -208,7 +218,8 @@
 </T.Mesh>
 
 <!-- Bender Tool Pivot Group -->
-<T.Group position={[0, 4, 0]} rotation.z={-bendAngle * (Math.PI / 180)} rotation.y={Math.PI}>
+<!-- Position shifted by `benderX` backwards so it properly rolls rather than sliding -->
+<T.Group position={[benderX, 4, 0]} rotation.z={-angleRad} rotation.y={Math.PI}>
   <T.Mesh rotation.z={-Math.PI / 2} castShadow>
     <T.TorusGeometry args={[4, 0.45, 16, 64, Math.PI / 2 + 0.1]} />
     <T.MeshStandardMaterial color="#1e90ff" metalness={0.3} roughness={0.6} />
