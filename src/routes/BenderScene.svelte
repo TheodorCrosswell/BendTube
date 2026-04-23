@@ -1,14 +1,34 @@
 <!-- src/routes/BenderScene.svelte -->
 <script lang="ts">
-  import { T } from '@threlte/core';
+  import { T, useTask } from '@threlte/core';
   import { OrbitControls, Grid, interactivity } from '@threlte/extras';
   import * as THREE from 'three';
 
-  // Added isOrthographic prop
-  let { bendAngle = $bindable(0), isOrthographic = false } = $props();
+  // 1. Define strict types for the component props so parent components can bind to them
+  interface Props {
+    bendAngle?: number;
+    isOrthographic?: boolean;
+    stats?: {
+      beforeBend: number;
+      inBend: number;
+      afterBend: number;
+      total: number;
+      width: number;
+      height: number;
+      depth: number;
+    };
+  }
 
-  // Enable Threlte's raycasting interactivity for pointer events (v8/v9 syntax)
+  let { 
+    bendAngle = $bindable(0), 
+    isOrthographic = false, 
+    stats = $bindable({ beforeBend: 0, inBend: 0, afterBend: 0, total: 0, width: 0, height: 0, depth: 0 }) 
+  }: Props = $props();
+
   interactivity();
+
+  // 2. Initialize with undefined instead of null to satisfy Threlte's expected type
+  let tubeGeom = $state<THREE.TubeGeometry | undefined>(undefined);
 
   // --- Dragging Logic ---
   let isDragging = $state(false);
@@ -22,20 +42,15 @@
     startY = e.clientY;
     startAngle = bendAngle;
     document.body.style.cursor = 'grabbing';
-    e.stopPropagation(); // Prevent orbit controls from stealing focus
+    e.stopPropagation();
   };
 
   const onPointerMove = (e: PointerEvent) => {
     if (!isDragging) return;
-    // Calculate mouse movement (pulling down and right bends the conduit)
     const deltaX = e.clientX - startX;
     const deltaY = e.clientY - startY;
-    
-    // Sensitivity factor
     const movement = deltaX + deltaY; 
     let newAngle = startAngle + movement * 0.4;
-    
-    // Clamp between 0 and 110 degrees
     bendAngle = Math.max(0, Math.min(newAngle, 110)); 
   };
 
@@ -45,6 +60,77 @@
       document.body.style.cursor = 'default';
     }
   };
+
+  // --- Performance Calculation Polling ---
+  let timeElapsed = 0;
+  
+  // useTask fires on the render loop. We limit calculations to 5 times per second (0.2s intervals)
+  useTask((delta) => {
+    timeElapsed += delta;
+    if (timeElapsed >= 0.2) {
+      timeElapsed %= 0.2;
+      calculateStatsFromScene();
+    }
+  });
+
+  function calculateStatsFromScene() {
+    if (!tubeGeom) return;
+
+    // 1. EXTRACT 3D SPATIAL DIMENSIONS (Bounding Box)
+    // Computes the actual box encapsulating the generated geometry (includes conduit thickness)
+    tubeGeom.computeBoundingBox();
+    const box = tubeGeom.boundingBox;
+    const size = new THREE.Vector3();
+    if (box) box.getSize(size);
+
+    // 2. EXTRACT SEGMENT LENGTHS FROM GEOMETRY PATH
+    const path = tubeGeom.parameters.path;
+    // Extract 1000 points strictly from the 3D object's path to measure vectors
+    const points = path.getPoints(1000); 
+
+    let lenBefore = 0;
+    let lenBend = 0;
+    let lenAfter = 0;
+    let state = 'BEFORE'; // FSM: 'BEFORE' -> 'BEND' -> 'AFTER'
+
+    for (let i = 0; i < points.length - 1; i++) {
+      const pA = points[i];
+      const pB = points[i + 1];
+      const dist = pA.distanceTo(pB);
+
+      if (i > 0 && i < points.length - 1) {
+        const pPrev = points[i - 1];
+        const vPrev = new THREE.Vector3().subVectors(pA, pPrev).normalize();
+        const vNext = new THREE.Vector3().subVectors(pB, pA).normalize();
+        
+        // Measure the angle between adjacent segment vectors to detect the bend in 3D space
+        const angle = vPrev.angleTo(vNext);
+        const isStraight = angle < 0.002; // Small tolerance for floating point variations
+
+        // State Machine to segment the pipe
+        if (state === 'BEFORE' && !isStraight) {
+          state = 'BEND';
+        } else if (state === 'BEND' && isStraight) {
+          state = 'AFTER';
+        }
+      }
+
+      if (state === 'BEFORE') lenBefore += dist;
+      else if (state === 'BEND') lenBend += dist;
+      else if (state === 'AFTER') lenAfter += dist;
+    }
+
+    // Push the results back to the two-way bound prop
+    stats = {
+      beforeBend: lenBefore,
+      inBend: lenBend,
+      afterBend: lenAfter,
+      total: lenBefore + lenBend + lenAfter,
+      width: size.x,
+      height: size.y,
+      depth: size.z
+    };
+  }
 
   // --- Dynamic Math: Conduit Path Curve ---
   class ConduitCurve extends THREE.Curve<THREE.Vector3> {
@@ -57,26 +143,18 @@
 
     getPoint(t: number, optionalTarget = new THREE.Vector3()) {
       const angleRad = this.angleDeg * (Math.PI / 180);
-      const R = 4; // Bending radius
-      const L1_initial = 15; // Initial back section length
-      const L2 = 15; // Straight forward section length
+      const R = 4;
+      const L1_initial = 15;
+      const L2 = 15;
       
-      // REAL-WORLD EMT MATH:
-      // The pipe doesn't stretch. The arc consumes straight pipe (Developed Length = R * theta).
-      // We shrink the BACK straight section by the exact length of the arc (flipped shortening action).
       const arcLen = R * angleRad;
       const L1 = L1_initial - arcLen; 
-      
-      // The physical total length remains perfectly constant at all times (15 + 15 = 30)
       const totalLen = L1_initial + L2; 
       const d = t * totalLen;
 
       if (d <= L1) {
-        // Back straight (Pulls forward/shortens visually as pipe wraps into the bend)
         return optionalTarget.set(-L1 + d, 0, 0);
       } else if (d <= L1 + arcLen) {
-        // Arc (Bend)
-        // Distance along the arc is (d - L1). Angle theta = arcDistance / Radius
         const theta = (d - L1) / R;
         return optionalTarget.set(
           R * Math.cos(-Math.PI / 2 + theta),
@@ -84,7 +162,6 @@
           0
         );
       } else {
-        // Forward straight (Now maintains full constant length as it rises into the air)
         const straightD = d - (L1 + arcLen);
         const endAngle = -Math.PI / 2 + angleRad;
         const px = R * Math.cos(endAngle);
@@ -98,8 +175,6 @@
     }
   }
 
-  // Reactively rebuild the curve instance when the angle changes using Svelte 5
-  // Note: We leave the instantiation of TubeGeometry to Threlte below!
   let curve = $derived(new ConduitCurve(bendAngle));
 </script>
 
@@ -111,9 +186,7 @@
 
 <!-- Camera & Navigation Toggle -->
 {#if isOrthographic}
-  <!-- zoom factor controls scale, zoom=40 roughly equals the scale of a perspective cam at distance 25 -->
   <T.OrthographicCamera makeDefault position={[0, 5, 25]} zoom={40}>
-    <!-- Disable OrbitControls while dragging the handle -->
     <OrbitControls enableDamping target={[0, 2, 0]} enabled={!isDragging} />
   </T.OrthographicCamera>
 {:else}
@@ -123,68 +196,37 @@
 {/if}
 
 <!-- 3D Coordinate Grids -->
-<!-- XZ Plane (Horizontal floor, y=0) -->
-<Grid 
-  position={[0, 0, 0]} 
-  sectionColor="#888888" 
-  cellColor="#444444" 
-  fadeDistance={50} 
-/>
-<!-- XY Plane (Vertical facing Z, rotated 90deg on X axis) -->
-<Grid 
-  position={[0, 0, 0]} 
-  rotation.x={Math.PI / 2}
-  sectionColor="#888888" 
-  cellColor="#444444" 
-  fadeDistance={50} 
-/>
-<!-- YZ Plane (Vertical facing X, rotated 90deg on Z axis) -->
-<Grid 
-  position={[0, 0, 0]} 
-  rotation.z={Math.PI / 2}
-  sectionColor="#888888" 
-  cellColor="#444444" 
-  fadeDistance={50} 
-/>
+<Grid position={[0, 0, 0]} sectionColor="#888888" cellColor="#444444" fadeDistance={50} />
+<Grid position={[0, 0, 0]} rotation.x={Math.PI / 2} sectionColor="#888888" cellColor="#444444" fadeDistance={50} />
+<Grid position={[0, 0, 0]} rotation.z={Math.PI / 2} sectionColor="#888888" cellColor="#444444" fadeDistance={50} />
 
 <!-- EMT Conduit Model -->
 <T.Mesh castShadow receiveShadow>
-  <!-- 
-    Using `args` enables Threlte to monitor changes. When `$derived` curve changes, 
-    Threlte will automatically clear the old geometry from GPU memory and build a new one. 
-  -->
-  <T.TubeGeometry args={[curve, 100, 0.4, 16, false]} />
+  <!-- Using bind:ref with undefined initial state -->
+  <T.TubeGeometry bind:ref={tubeGeom} args={[curve, 100, 0.4, 16, false]} />
   <T.MeshStandardMaterial color="#dddddd" metalness={0.9} roughness={0.3} />
 </T.Mesh>
 
 <!-- Bender Tool Pivot Group -->
-<!-- Rotates clockwise (-Z) around the center of the bend radius (0, 4, 0), and rotated 180 degrees on Y axis -->
 <T.Group position={[0, 4, 0]} rotation.z={-bendAngle * (Math.PI / 180)} rotation.y={Math.PI}>
-  
-  <!-- Bender Shoe (The curved blue part) -->
   <T.Mesh rotation.z={-Math.PI / 2} castShadow>
     <T.TorusGeometry args={[4, 0.45, 16, 64, Math.PI / 2 + 0.1]} />
     <T.MeshStandardMaterial color="#1e90ff" metalness={0.3} roughness={0.6} />
   </T.Mesh>
 
-  <!-- Interactive Handle Group -->
-  <!-- Threlte v8 events use standard lowercase Svelte 5 syntax: onpointerdown -->
   <T.Group 
     onpointerdown={onPointerDown} 
     onpointerenter={() => document.body.style.cursor = 'grab'} 
     onpointerleave={() => { if (!isDragging) document.body.style.cursor = 'default'; }}
   >
-    <!-- Handle Pole -->
     <T.Mesh position={[0, 4, 0]} castShadow>
       <T.CylinderGeometry args={[0.15, 0.15, 16, 16]} />
       <T.MeshStandardMaterial color="#333333" metalness={0.7} roughness={0.2} />
     </T.Mesh>
 
-    <!-- Handle Grip (Red) -->
     <T.Mesh position={[0, 11, 0]}>
       <T.CylinderGeometry args={[0.20, 0.20, 2, 16]} />
       <T.MeshStandardMaterial color="#cc0000" />
     </T.Mesh>
-    
   </T.Group>
 </T.Group>
