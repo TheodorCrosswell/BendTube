@@ -58,21 +58,21 @@
     getPoint(t: number, optionalTarget = new THREE.Vector3()) {
       const angleRad = this.angleDeg * (Math.PI / 180);
       const R = 4; // Bending radius
-      const L1 = 15; // Straight back section length (anchored at shoe)
-      const L2_initial = 15; // Initial straight forward section length
+      const L1_initial = 15; // Initial back section length
+      const L2 = 15; // Straight forward section length
       
       // REAL-WORLD EMT MATH:
       // The pipe doesn't stretch. The arc consumes straight pipe (Developed Length = R * theta).
-      // We shrink the forward straight section by the exact length of the arc.
+      // We shrink the BACK straight section by the exact length of the arc (flipped shortening action).
       const arcLen = R * angleRad;
-      const L2 = L2_initial - arcLen; 
+      const L1 = L1_initial - arcLen; 
       
       // The physical total length remains perfectly constant at all times (15 + 15 = 30)
-      const totalLen = L1 + L2_initial; 
+      const totalLen = L1_initial + L2; 
       const d = t * totalLen;
 
       if (d <= L1) {
-        // Back straight (Remains flat and stationary relative to the floor)
+        // Back straight (Pulls forward/shortens visually as pipe wraps into the bend)
         return optionalTarget.set(-L1 + d, 0, 0);
       } else if (d <= L1 + arcLen) {
         // Arc (Bend)
@@ -84,7 +84,7 @@
           0
         );
       } else {
-        // Forward straight (Pulls back/shortens visually as pipe wraps into the bend)
+        // Forward straight (Now maintains full constant length as it rises into the air)
         const straightD = d - (L1 + arcLen);
         const endAngle = -Math.PI / 2 + angleRad;
         const px = R * Math.cos(endAngle);
