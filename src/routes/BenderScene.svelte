@@ -6,6 +6,7 @@
 
   interface Props {
     bendAngle?: number;
+    bendRotation?: number; // Expose the new rotation parameter
     bendPosition?: number;
     isOrthographic?: boolean;
     outerDiameter?: number;
@@ -21,7 +22,8 @@
   }
 
   let { 
-    bendAngle = $bindable(0), 
+    bendAngle = $bindable(0),
+    bendRotation = $bindable(0), 
     bendPosition = $bindable(60),
     isOrthographic = false,
     outerDiameter = 0.706,
@@ -143,18 +145,21 @@
     angleDeg: number;
     R: number;
     bendPos: number;
+    rotDeg: number;
     totalLen: number;
 
-    constructor(angleDeg: number, R: number, bendPos: number) {
+    constructor(angleDeg: number, R: number, bendPos: number, rotDeg: number) {
       super();
       this.angleDeg = angleDeg;
       this.R = R;
       this.bendPos = bendPos;
+      this.rotDeg = rotDeg;
       this.totalLen = 120; // Exact length 120", starts at 0, 0
     }
 
     getPoint(t: number, optionalTarget = new THREE.Vector3()) {
       const angleRad = this.angleDeg * (Math.PI / 180);
+      const rotRad = this.rotDeg * (Math.PI / 180);
       const arcLen = this.R * angleRad;
       const L1 = this.bendPos - arcLen; 
       const d = t * this.totalLen;
@@ -165,10 +170,14 @@
       } else if (d <= L1 + arcLen) {
         // Bend curve
         const theta = (d - L1) / this.R;
+        
+        // Calculate the native Y coordinate (the bend height relative to the pipe)
+        const baseY = this.R + this.R * Math.sin(-Math.PI / 2 + theta);
+        
         return optionalTarget.set(
           L1 + this.R * Math.cos(-Math.PI / 2 + theta),
-          this.R + this.R * Math.sin(-Math.PI / 2 + theta),
-          0
+          baseY * Math.cos(rotRad), // Resolve the Y rotation into space
+          baseY * Math.sin(rotRad)  // Resolve the Z rotation into space
         );
       } else {
         // Straight continuation after the bend finishes
@@ -176,16 +185,21 @@
         const endAngle = -Math.PI / 2 + angleRad;
         const px = L1 + this.R * Math.cos(endAngle);
         const py = this.R + this.R * Math.sin(endAngle);
+        
+        // Calculate the native continuation Y coordinate
+        const baseY = py + straightD * Math.sin(angleRad);
+        
         return optionalTarget.set(
           px + straightD * Math.cos(angleRad),
-          py + straightD * Math.sin(angleRad),
-          0
+          baseY * Math.cos(rotRad), // Resolve into 3D Space
+          baseY * Math.sin(rotRad)
         );
       }
     }
   }
 
-  let curve = $derived(new ConduitCurve(bendAngle, bendRadius, bendPosition));
+  // Inject the new bendRotation property into the geometry calculations
+  let curve = $derived(new ConduitCurve(bendAngle, bendRadius, bendPosition, bendRotation));
 </script>
 
 <svelte:window onpointermove={onPointerMove} onpointerup={onPointerUp} />
@@ -211,30 +225,34 @@
 
 <T.Mesh castShadow receiveShadow>
   <T.TubeGeometry bind:ref={tubeGeom} args={[curve, 100, pipeRadius, 16, false]} />
-  <T.MeshStandardMaterial color="#dddddd" metalness={0.9} roughness={0.3} />
+  <T.MeshStandardMaterial color="#999999" metalness={0.9} roughness={0.3} />
 </T.Mesh>
 
-<!-- Bender Tool Pivot Group -->
-<T.Group position={[benderX, bendRadius, 0]} rotation.z={-angleRad} rotation.y={Math.PI} scale={toolScaleFactor}>
-  <T.Mesh rotation.z={-Math.PI / 2} castShadow>
-    <T.TorusGeometry args={[4, 0.45, 16, 64, Math.PI / 2 + 0.1]} />
-    <T.MeshStandardMaterial color="#1e90ff" metalness={0.3} roughness={0.6} />
-  </T.Mesh>
-
-  <T.Group 
-    rotation.z={Math.PI / 6}
-    onpointerdown={onPointerDown} 
-    onpointerenter={() => document.body.style.cursor = 'grab'} 
-    onpointerleave={() => { if (!isDragging) document.body.style.cursor = 'default'; }}
-  >
-    <T.Mesh position={[0, 4, 0]} castShadow>
-      <T.CylinderGeometry args={[0.15, 0.15, 16, 16]} />
-      <T.MeshStandardMaterial color="#333333" metalness={0.7} roughness={0.2} />
+<!-- Bender Tool Pivot Group - This parent group tracks the 0-360 rotation of the bend roll-->
+<T.Group rotation.x={bendRotation * (Math.PI / 180)}>
+  
+  <T.Group position={[benderX, bendRadius, 0]} rotation.z={-angleRad} rotation.y={Math.PI} scale={toolScaleFactor}>
+    <T.Mesh rotation.z={-Math.PI / 2} castShadow>
+      <T.TorusGeometry args={[4, 0.45, 16, 64, Math.PI / 2 + 0.1]} />
+      <T.MeshStandardMaterial color="#1e90ff" metalness={0.3} roughness={0.6} />
     </T.Mesh>
 
-    <T.Mesh position={[0, 11, 0]}>
-      <T.CylinderGeometry args={[0.20, 0.20, 2, 16]} />
-      <T.MeshStandardMaterial color="#cc0000" />
-    </T.Mesh>
+    <T.Group 
+      rotation.z={Math.PI / 6}
+      onpointerdown={onPointerDown} 
+      onpointerenter={() => document.body.style.cursor = 'grab'} 
+      onpointerleave={() => { if (!isDragging) document.body.style.cursor = 'default'; }}
+    >
+      <T.Mesh position={[0, 4, 0]} castShadow>
+        <T.CylinderGeometry args={[0.15, 0.15, 16, 16]} />
+        <T.MeshStandardMaterial color="#333333" metalness={0.7} roughness={0.2} />
+      </T.Mesh>
+
+      <T.Mesh position={[0, 11, 0]}>
+        <T.CylinderGeometry args={[0.20, 0.20, 2, 16]} />
+        <T.MeshStandardMaterial color="#cc0000" />
+      </T.Mesh>
+    </T.Group>
   </T.Group>
+  
 </T.Group>

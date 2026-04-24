@@ -7,6 +7,7 @@
   import conduitData from '$lib/data/conduit-sizes.json';
 
   let bendAngle = $state(0);
+  let bendRotation = $state(0); // New State: Rotation around the pipe's axis
   let bendPosition = $state(60); // Starts the bend at the halfway mark by default
   let isOrthographic = $state(false);
 
@@ -45,6 +46,7 @@
   });
 
   const quickAngles = [10, 22.5, 30, 45, 60, 90];
+  const quickRotations = [0, 90, 180, 270]; // Standard orientation clicks
 </script>
 
 <div class="simulator-container">
@@ -125,6 +127,27 @@
           {/each}
         </div>
       </div>
+
+      <div class="control-row">
+        <label>Bend Rotation (Roll)
+        <div class="slider-container">
+          <input type="range" min="0" max="360" bind:value={bendRotation} />
+          <span class="val-display">{Math.round(bendRotation)}&deg;</span>
+        </div>
+        </label>
+
+        <!-- Quick Select Buttons for Orientation -->
+        <div class="quick-angles button-row flex-wrap">
+          {#each quickRotations as rot}
+            <button 
+              class:active={bendRotation === rot}
+              onclick={() => bendRotation = rot}
+            >
+              {rot}&deg;
+            </button>
+          {/each}
+        </div>
+      </div>
     </div>
 
     <button 
@@ -162,6 +185,7 @@
     <Canvas shadows={THREE.PCFShadowMap}>
       <BenderScene 
         bind:bendAngle 
+        bind:bendRotation
         bind:bendPosition
         {isOrthographic} 
         {outerDiameter}
