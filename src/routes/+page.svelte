@@ -238,6 +238,8 @@
         bind:bendPosition
         {isOrthographic} 
         {outerDiameter}
+        conduitSize={selectedSize}
+        conduitType={selectedType}
         bind:stats 
       />
     </Canvas>

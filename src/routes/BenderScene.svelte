@@ -10,6 +10,8 @@
     bendPosition?: number;
     isOrthographic?: boolean;
     outerDiameter?: number;
+    conduitSize?: string; // Nominal size (e.g., '1/2')
+    conduitType?: string; // Type of conduit (e.g., 'EMT')
     stats?: {
       beforeBend: number;
       inBend: number;
@@ -27,6 +29,8 @@
     bendPosition = $bindable(60),
     isOrthographic = false,
     outerDiameter = 0.706,
+    conduitSize = '1/2',
+    conduitType = 'EMT',
     stats = $bindable({ beforeBend: 0, inBend: 0, afterBend: 0, total: 0, width: 0, height: 0, depth: 0 }) 
   }: Props = $props();
 
@@ -45,6 +49,57 @@
   // Bender now translates along the pipe with bendPosition, and naturally subtracts
   // bendRadius * angleRad to roll back into the curve without overriding the physical mechanic
   let benderX = $derived(bendPosition - (bendRadius * angleRad));
+
+  // --- Dynamic Canvas Texture for Conduit Text ---
+  let textTexture = $derived.by(() => {
+    // Prevent execution during SSR
+    if (typeof document === 'undefined') return undefined;
+
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return undefined;
+
+    const text = `${conduitSize}" ${conduitType} Conduit ----- `;
+    const fontSize = 40;
+    
+    // Set font to measure text length properly so we can tile it seamlessly
+    ctx.font = `bold ${fontSize}px sans-serif`;
+    const textWidth = Math.ceil(ctx.measureText(text).width);
+    
+    // Width is exactly the text length; Height is the circumference map size (V axis)
+    canvas.width = textWidth;
+    canvas.height = 256; 
+
+    // Context resets when canvas is resized, grab again
+    const ctx2 = canvas.getContext('2d');
+    if (!ctx2) return undefined;
+
+    // Fill background with original conduit color
+    ctx2.fillStyle = '#999999';
+    ctx2.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Draw the continuous light-colored text
+    ctx2.fillStyle = '#e0e0e0';
+    ctx2.font = `bold ${fontSize}px sans-serif`;
+    ctx2.textAlign = 'center';
+    ctx2.textBaseline = 'middle';
+    ctx2.fillText(text, canvas.width / 2, canvas.height / 2);
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.wrapS = THREE.RepeatWrapping;
+    texture.wrapT = THREE.RepeatWrapping;
+    
+    // Repeat along the 120" tube length (U axis)
+    texture.repeat.set(15, 1);
+    
+    // Offset V axis to align text smoothly onto the "top" curve of the pipe
+    texture.offset.set(0, 0.25);
+    
+    texture.colorSpace = THREE.SRGBColorSpace;
+    texture.needsUpdate = true;
+
+    return texture;
+  });
 
   // --- Dragging Logic ---
   let isDragging = $state(false);
@@ -225,7 +280,13 @@
 
 <T.Mesh castShadow receiveShadow>
   <T.TubeGeometry bind:ref={tubeGeom} args={[curve, 100, pipeRadius, 16, false]} />
-  <T.MeshStandardMaterial color="#999999" metalness={0.9} roughness={0.3} />
+  <!-- Use white base color if texture loaded, otherwise default to grey so we don't break SSR -->
+  <T.MeshStandardMaterial 
+    color={textTexture ? "#ffffff" : "#999999"} 
+    map={textTexture || null} 
+    metalness={0.9} 
+    roughness={0.3} 
+  />
 </T.Mesh>
 
 <!-- Bender Tool Pivot Group - This parent group tracks the 0-360 rotation of the bend roll-->
