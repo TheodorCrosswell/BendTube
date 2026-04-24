@@ -10,6 +10,10 @@
   let bendPosition = $state(60); // Starts the bend at the halfway mark by default
   let isOrthographic = $state(false);
 
+  // --- UI Layout State ---
+  let leftPanelOpen = $state(true);
+  let rightPanelOpen = $state(true);
+
   // --- Conduit Selection Logic ---
   const standards = conduitData.conduit_standards;
   const conduitTypes = ['EMT', 'IMC', 'Rigid'] as const;
@@ -19,7 +23,7 @@
   let availableSizes = $derived(sizesForType.map(s => s.trade_size));
   let selectedSize = $state('1/2');
 
-  // Reactively enforce valid size selections when switching types (e.g. EMT doesn't have 6")
+  // Reactively enforce valid size selections when switching types
   $effect(() => {
     if (!availableSizes.includes(selectedSize)) {
       selectedSize = availableSizes[0];
@@ -39,12 +43,25 @@
     height: 0,
     depth: 0
   });
+
+  const quickAngles = [10, 22.5, 30, 45, 60, 90];
 </script>
 
 <div class="simulator-container">
-  <!-- 2D UI Overlay -->
-  <div class="ui-panel">
-    <h1>Conduit Bender</h1>
+  <!-- Panel Toggles (visible when panels are hidden) -->
+  <button class="panel-toggle left" onclick={() => leftPanelOpen = true} class:hidden={leftPanelOpen}>
+    ⚙️ Controls
+  </button>
+  <button class="panel-toggle right" onclick={() => rightPanelOpen = true} class:hidden={rightPanelOpen}>
+    📊 Stats
+  </button>
+
+  <!-- Left UI Overlay (Controls) -->
+  <div class="ui-panel left-panel" class:open={leftPanelOpen}>
+    <div class="panel-header">
+      <h1>Conduit Bender</h1>
+      <button class="close-btn" onclick={() => leftPanelOpen = false} title="Close">✕</button>
+    </div>
     <p>Click and drag the handle, or use the sliders.</p>
 
     <!-- Conduit Type Selection -->
@@ -80,7 +97,7 @@
     <!-- Position & Angle Controls -->
     <div class="controls-group">
       <div class="control-row">
-        <label>Bend Start Position``
+        <label>Bend Start Position
         <div class="slider-container">
           <input type="range" min="0" max="120" step="0.1" bind:value={bendPosition} />
           <span class="val-display">{bendPosition.toFixed(1)}"</span>
@@ -95,6 +112,18 @@
           <span class="val-display">{Math.round(bendAngle)}&deg;</span>
         </div>
         </label>
+        
+        <!-- Quick Select Buttons -->
+        <div class="quick-angles button-row flex-wrap">
+          {#each quickAngles as angle}
+            <button 
+              class:active={bendAngle === angle}
+              onclick={() => bendAngle = angle}
+            >
+              {angle}&deg;
+            </button>
+          {/each}
+        </div>
       </div>
     </div>
 
@@ -104,25 +133,28 @@
     >
       Switch to {isOrthographic ? 'Perspective' : 'Orthographic'} View
     </button>
+  </div>
 
-    <!-- Display the Live 3D Measurements -->
-    <div class="measurements">
-      <h3>Live 3D Geometry Analysis</h3>
-      
-      <div class="stat-section">
-        <h4>Segment Lengths</h4>
-        <div class="stat-row"><span>Before Bend:</span> <span>{stats.beforeBend.toFixed(2)}"</span></div>
-        <div class="stat-row"><span>In Bend:</span> <span>{stats.inBend.toFixed(2)}"</span></div>
-        <div class="stat-row"><span>After Bend:</span> <span>{stats.afterBend.toFixed(2)}"</span></div>
-        <div class="stat-row total"><span>Total Length:</span> <span>{stats.total.toFixed(2)}"</span></div>
-      </div>
+  <!-- Right UI Overlay (Live Stats) -->
+  <div class="ui-panel right-panel" class:open={rightPanelOpen}>
+    <div class="panel-header">
+      <h3 class="stats-title">Live 3D Geometry Analysis</h3>
+      <button class="close-btn" onclick={() => rightPanelOpen = false} title="Close">✕</button>
+    </div>
+    
+    <div class="stat-section">
+      <h4>Segment Lengths</h4>
+      <div class="stat-row"><span>Before Bend:</span> <span>{stats.beforeBend.toFixed(2)}"</span></div>
+      <div class="stat-row"><span>In Bend:</span> <span>{stats.inBend.toFixed(2)}"</span></div>
+      <div class="stat-row"><span>After Bend:</span> <span>{stats.afterBend.toFixed(2)}"</span></div>
+      <div class="stat-row total"><span>Total Length:</span> <span>{stats.total.toFixed(2)}"</span></div>
+    </div>
 
-      <div class="stat-section">
-        <h4>Physical 3D Dimensions</h4>
-        <div class="stat-row"><span>Width (X):</span> <span>{stats.width.toFixed(2)}"</span></div>
-        <div class="stat-row"><span>Height (Y):</span> <span>{stats.height.toFixed(2)}"</span></div>
-        <div class="stat-row"><span>Depth (Z):</span> <span>{stats.depth.toFixed(2)}"</span></div>
-      </div>
+    <div class="stat-section">
+      <h4>Physical 3D Dimensions</h4>
+      <div class="stat-row"><span>Width (X):</span> <span>{stats.width.toFixed(2)}"</span></div>
+      <div class="stat-row"><span>Height (Y):</span> <span>{stats.height.toFixed(2)}"</span></div>
+      <div class="stat-row"><span>Depth (Z):</span> <span>{stats.depth.toFixed(2)}"</span></div>
     </div>
   </div>
 
@@ -153,29 +185,103 @@
     overflow: hidden;
   }
 
+  /* --- Toggle Buttons --- */
+  .panel-toggle {
+    position: absolute;
+    z-index: 5;
+    background: rgba(40, 40, 40, 0.9);
+    color: #fff;
+    border: 1px solid #555;
+    padding: 0.6rem 1rem;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    font-weight: 600;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+    transition: all 0.3s ease;
+  }
+  .panel-toggle:hover { background: #555; }
+  .panel-toggle.left { top: 20px; left: 20px; }
+  .panel-toggle.right { top: 20px; right: 20px; }
+  .panel-toggle.hidden {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+  }
+
+  /* --- Base Panel Styles --- */
   .ui-panel {
     position: absolute;
-    top: 20px;
-    left: 20px;
     z-index: 10;
-    background: rgba(20, 20, 20, 0.85);
     color: white;
     padding: 1.5rem;
     border-radius: 12px;
-    box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
     border: 1px solid #333;
     pointer-events: auto;
     width: 330px;
-    max-height: 90vh;
+    box-sizing: border-box;
+    max-height: calc(100vh - 40px);
     overflow-y: auto;
+    transition: transform 0.35s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.35s ease;
   }
-
   .ui-panel::-webkit-scrollbar { width: 6px; }
   .ui-panel::-webkit-scrollbar-thumb { background: #555; border-radius: 3px; }
 
-  h1 { margin: 0 0 0.25rem 0; font-size: 1.25rem; color: #1e90ff; }
+  /* --- Left Panel --- */
+  .ui-panel.left-panel {
+    top: 20px;
+    left: 20px;
+    background: rgba(20, 20, 20, 0.85);
+    transform: translateX(-120%);
+    opacity: 0;
+  }
+  .ui-panel.left-panel.open {
+    transform: translateX(0);
+    opacity: 1;
+  }
+
+  /* --- Right Panel --- */
+  .ui-panel.right-panel {
+    top: 20px;
+    right: 20px;
+    background: rgba(20, 20, 20, 0.6); /* More transparent */
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    transform: translateX(120%);
+    opacity: 0;
+  }
+  .ui-panel.right-panel.open {
+    transform: translateX(0);
+    opacity: 1;
+  }
+
+  /* --- Panel Headers --- */
+  .panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 0.5rem;
+  }
+  .panel-header h1 { margin: 0; font-size: 1.25rem; color: #1e90ff; }
+  .stats-title { margin: 0; font-size: 1rem; color: #4caf50; text-transform: uppercase; letter-spacing: 0.5px; }
+  
+  .close-btn {
+    background: transparent;
+    border: none;
+    color: #aaa;
+    font-size: 1.25rem;
+    cursor: pointer;
+    line-height: 1;
+    padding: 0.2rem;
+    border-radius: 4px;
+    transition: all 0.2s;
+  }
+  .close-btn:hover { color: #fff; background: rgba(255,255,255,0.1); }
+
   p { margin: 0 0 1rem 0; font-size: 0.85rem; color: #aaa; }
 
+  /* --- Input & Control Layout --- */
   .selector-group { margin-bottom: 1rem; }
   .selector-group h4 { margin: 0 0 0.5rem 0; font-size: 0.8rem; color: #aaa; text-transform: uppercase; }
   
@@ -193,7 +299,7 @@
     font-size: 0.85rem;
     transition: all 0.2s;
   }
-  .button-row.flex-wrap button { flex: unset; min-width: 48px; }
+  .button-row.flex-wrap button { flex: unset; min-width: 45px; }
   .button-row button:hover { background: #444; }
   .button-row button.active {
     background: #1e90ff;
@@ -207,6 +313,7 @@
   .slider-container { display: flex; align-items: center; gap: 1rem; }
   input[type="range"] { flex-grow: 1; cursor: pointer; }
   .val-display { font-weight: bold; min-width: 45px; text-align: right; color: #fff; }
+  .quick-angles { margin-top: 0.6rem; }
 
   .view-toggle {
     margin-top: 1.25rem;
@@ -223,17 +330,40 @@
   }
   .view-toggle:hover { background-color: #444; }
 
-  .measurements {
-    margin-top: 1.5rem;
-    padding-top: 1rem;
-    border-top: 1px solid #444;
-  }
-  .measurements h3 { margin: 0 0 1rem 0; font-size: 1rem; color: #4caf50; text-transform: uppercase; letter-spacing: 0.5px; }
-
-  .stat-section { margin-bottom: 1rem; background: rgba(0, 0, 0, 0.2); padding: 0.75rem; border-radius: 6px; }
-  .stat-section h4 { margin: 0 0 0.5rem 0; font-size: 0.8rem; color: #888; }
+  /* --- Stats Styling --- */
+  .stat-section { margin-top: 1rem; background: rgba(0, 0, 0, 0.2); padding: 0.75rem; border-radius: 6px; }
+  .stat-section h4 { margin: 0 0 0.5rem 0; font-size: 0.8rem; color: #888; text-transform: uppercase; }
 
   .stat-row { display: flex; justify-content: space-between; font-size: 0.9rem; margin-bottom: 0.35rem; color: #ddd; }
   .stat-row:last-child { margin-bottom: 0; }
   .stat-row.total { margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px dashed #555; font-weight: bold; color: #fff; }
+
+  /* --- Mobile Responsive Rules --- */
+  @media (max-width: 768px) {
+    .ui-panel {
+      width: auto;
+      left: 15px;
+      right: 15px;
+      max-height: 45vh;
+      padding: 1.2rem;
+    }
+    
+    /* Reposition so panels stack logically on tiny screens instead of overlapping heavily */
+    .ui-panel.left-panel {
+      top: 15px;
+      transform: translateY(-120%); /* Slide in from top instead of left */
+    }
+    .ui-panel.left-panel.open { transform: translateY(0); }
+
+    .ui-panel.right-panel {
+      top: auto;
+      bottom: 15px;
+      transform: translateY(120%); /* Slide in from bottom */
+    }
+    .ui-panel.right-panel.open { transform: translateY(0); }
+
+    /* Adjust Toggles */
+    .panel-toggle.left { top: 15px; left: 15px; }
+    .panel-toggle.right { top: auto; bottom: 15px; right: 15px; }
+  }
 </style>
