@@ -6,6 +6,7 @@
 
   interface Props {
     bendAngle?: number;
+    bendPosition?: number;
     isOrthographic?: boolean;
     outerDiameter?: number;
     stats?: {
@@ -21,6 +22,7 @@
 
   let { 
     bendAngle = $bindable(0), 
+    bendPosition = $bindable(60),
     isOrthographic = false,
     outerDiameter = 0.706,
     stats = $bindable({ beforeBend: 0, inBend: 0, afterBend: 0, total: 0, width: 0, height: 0, depth: 0 }) 
@@ -30,20 +32,17 @@
 
   let tubeGeom = $state<THREE.TubeGeometry | undefined>(undefined);
 
-  // --- Dynamic Parametric Scale calculations ---
-  // A standard 120" stick of conduit broken out roughly in front/behind the bend 
-  // ensuring the segment consumed by the curve never pulls the left tail past x=0.
-  const L1_initial = 75; 
-  const L2 = 45; 
-
   let pipeRadius = $derived(outerDiameter / 2);
   
   // Scale the bend radius proportionately to the pipe's radius
   let bendRadius = $derived(pipeRadius * 10);
-  let toolScaleFactor = $derived(bendRadius / 4); // Based on original geometry scaled for r=0.4
+  let toolScaleFactor = $derived(bendRadius / 4);
 
   let angleRad = $derived(bendAngle * (Math.PI / 180));
-  let benderX = $derived(-bendRadius * angleRad);
+  
+  // Bender now translates along the pipe with bendPosition, and naturally subtracts
+  // bendRadius * angleRad to roll back into the curve without overriding the physical mechanic
+  let benderX = $derived(bendPosition - (bendRadius * angleRad));
 
   // --- Dragging Logic ---
   let isDragging = $state(false);
@@ -143,38 +142,39 @@
   class ConduitCurve extends THREE.Curve<THREE.Vector3> {
     angleDeg: number;
     R: number;
-    L1_initial: number;
-    L2: number;
+    bendPos: number;
+    totalLen: number;
 
-    constructor(angleDeg: number, R: number, L1: number, L2: number) {
+    constructor(angleDeg: number, R: number, bendPos: number) {
       super();
       this.angleDeg = angleDeg;
       this.R = R;
-      this.L1_initial = L1;
-      this.L2 = L2;
+      this.bendPos = bendPos;
+      this.totalLen = 120; // Exact length 120", starts at 0, 0
     }
 
     getPoint(t: number, optionalTarget = new THREE.Vector3()) {
       const angleRad = this.angleDeg * (Math.PI / 180);
-      
       const arcLen = this.R * angleRad;
-      const L1 = this.L1_initial - arcLen; 
-      const totalLen = this.L1_initial + this.L2; 
-      const d = t * totalLen;
+      const L1 = this.bendPos - arcLen; 
+      const d = t * this.totalLen;
 
       if (d <= L1) {
-        return optionalTarget.set(-this.L1_initial + d, 0, 0);
+        // Straight portion before bend begins
+        return optionalTarget.set(d, 0, 0);
       } else if (d <= L1 + arcLen) {
+        // Bend curve
         const theta = (d - L1) / this.R;
         return optionalTarget.set(
-          -arcLen + this.R * Math.cos(-Math.PI / 2 + theta),
+          L1 + this.R * Math.cos(-Math.PI / 2 + theta),
           this.R + this.R * Math.sin(-Math.PI / 2 + theta),
           0
         );
       } else {
+        // Straight continuation after the bend finishes
         const straightD = d - (L1 + arcLen);
         const endAngle = -Math.PI / 2 + angleRad;
-        const px = -arcLen + this.R * Math.cos(endAngle);
+        const px = L1 + this.R * Math.cos(endAngle);
         const py = this.R + this.R * Math.sin(endAngle);
         return optionalTarget.set(
           px + straightD * Math.cos(angleRad),
@@ -185,46 +185,42 @@
     }
   }
 
-  let curve = $derived(new ConduitCurve(bendAngle, bendRadius, L1_initial, L2));
+  let curve = $derived(new ConduitCurve(bendAngle, bendRadius, bendPosition));
 </script>
 
 <svelte:window onpointermove={onPointerMove} onpointerup={onPointerUp} />
 
-<!-- Lighting -->
 <T.AmbientLight intensity={0.8} />
-<T.DirectionalLight position={[20, 30, 20]} intensity={1.5} castShadow />
+<T.DirectionalLight position={[80, 30, 20]} intensity={1.5} castShadow />
 
-<!-- Camera & Navigation Toggle, pulled back to accommodate the 120" pipe scale -->
+<!-- Cameras adjusted to center look-target on the middle of the 0-120 length pipe -->
 {#if isOrthographic}
-  <T.OrthographicCamera makeDefault position={[0, 10, 100]} zoom={10}>
-    <OrbitControls enableDamping target={[0, 5, 0]} enabled={!isDragging} />
+  <T.OrthographicCamera makeDefault position={[60, 10, 100]} zoom={10}>
+    <OrbitControls enableDamping target={[60, 5, 0]} enabled={!isDragging} />
   </T.OrthographicCamera>
 {:else}
-  <T.PerspectiveCamera makeDefault position={[0, 10, 100]} fov={45}>
-    <OrbitControls enableDamping target={[0, 5, 0]} enabled={!isDragging} />
+  <T.PerspectiveCamera makeDefault position={[60, 10, 100]} fov={45}>
+    <OrbitControls enableDamping target={[60, 5, 0]} enabled={!isDragging} />
   </T.PerspectiveCamera>
 {/if}
 
-<!-- 3D Coordinate Grids - Expanded bounds for longer pipe -->
-<Grid sectionSize={20} cellSize={4} position={[0, 0, 0]} sectionColor="#888888" cellColor="#444444" fadeDistance={250} />
-<Grid sectionSize={20} cellSize={4} position={[0, 0, 0]} rotation.x={Math.PI / 2} sectionColor="#888888" cellColor="#444444" fadeDistance={250} />
-<Grid sectionSize={20} cellSize={4} position={[0, 0, 0]} rotation.z={Math.PI / 2} sectionColor="#888888" cellColor="#444444" fadeDistance={250} />
+<!-- 3D Coordinate Grids - Centered against the pipe length -->
+<Grid sectionSize={20} cellSize={4} position={[60, 0, 0]} sectionColor="#888888" cellColor="#444444" fadeDistance={250} />
+<Grid sectionSize={20} cellSize={4} position={[60, 0, 0]} rotation.x={Math.PI / 2} sectionColor="#888888" cellColor="#444444" fadeDistance={250} />
+<Grid sectionSize={20} cellSize={4} position={[60, 0, 0]} rotation.z={Math.PI / 2} sectionColor="#888888" cellColor="#444444" fadeDistance={250} />
 
-<!-- Real-time parameter driven Conduit Model -->
 <T.Mesh castShadow receiveShadow>
   <T.TubeGeometry bind:ref={tubeGeom} args={[curve, 100, pipeRadius, 16, false]} />
   <T.MeshStandardMaterial color="#dddddd" metalness={0.9} roughness={0.3} />
 </T.Mesh>
 
-<!-- Bender Tool Pivot Group - Proportioned relative to the selected outer diameter -->
+<!-- Bender Tool Pivot Group -->
 <T.Group position={[benderX, bendRadius, 0]} rotation.z={-angleRad} rotation.y={Math.PI} scale={toolScaleFactor}>
-  <!-- Bender Shoe -->
   <T.Mesh rotation.z={-Math.PI / 2} castShadow>
     <T.TorusGeometry args={[4, 0.45, 16, 64, Math.PI / 2 + 0.1]} />
     <T.MeshStandardMaterial color="#1e90ff" metalness={0.3} roughness={0.6} />
   </T.Mesh>
 
-  <!-- Handle / Pivot Interaction area -->
   <T.Group 
     rotation.z={Math.PI / 6}
     onpointerdown={onPointerDown} 

@@ -7,6 +7,7 @@
   import conduitData from '$lib/data/conduit-sizes.json';
 
   let bendAngle = $state(0);
+  let bendPosition = $state(60); // Starts the bend at the halfway mark by default
   let isOrthographic = $state(false);
 
   // --- Conduit Selection Logic ---
@@ -44,7 +45,7 @@
   <!-- 2D UI Overlay -->
   <div class="ui-panel">
     <h1>Conduit Bender</h1>
-    <p>Click and drag the handle, or use the slider.</p>
+    <p>Click and drag the handle, or use the sliders.</p>
 
     <!-- Conduit Type Selection -->
     <div class="selector-group">
@@ -76,9 +77,25 @@
       </div>
     </div>
     
-    <div class="controls">
-      <input type="range" min="0" max="110" bind:value={bendAngle} />
-      <span class="angle-display">{Math.round(bendAngle)}&deg;</span>
+    <!-- Position & Angle Controls -->
+    <div class="controls-group">
+      <div class="control-row">
+        <label>Bend Start Position``
+        <div class="slider-container">
+          <input type="range" min="0" max="120" step="0.1" bind:value={bendPosition} />
+          <span class="val-display">{bendPosition.toFixed(1)}"</span>
+        </div>
+        </label>
+      </div>
+
+      <div class="control-row">
+        <label>Bend Angle
+        <div class="slider-container">
+          <input type="range" min="0" max="110" bind:value={bendAngle} />
+          <span class="val-display">{Math.round(bendAngle)}&deg;</span>
+        </div>
+        </label>
+      </div>
     </div>
 
     <button 
@@ -113,6 +130,7 @@
     <Canvas shadows={THREE.PCFShadowMap}>
       <BenderScene 
         bind:bendAngle 
+        bind:bendPosition
         {isOrthographic} 
         {outerDiameter}
         bind:stats 
@@ -152,14 +170,12 @@
     overflow-y: auto;
   }
 
-  /* Custom Scrollbar for UI panel */
   .ui-panel::-webkit-scrollbar { width: 6px; }
   .ui-panel::-webkit-scrollbar-thumb { background: #555; border-radius: 3px; }
 
   h1 { margin: 0 0 0.25rem 0; font-size: 1.25rem; color: #1e90ff; }
   p { margin: 0 0 1rem 0; font-size: 0.85rem; color: #aaa; }
 
-  /* Conduit Selection UI */
   .selector-group { margin-bottom: 1rem; }
   .selector-group h4 { margin: 0 0 0.5rem 0; font-size: 0.8rem; color: #aaa; text-transform: uppercase; }
   
@@ -178,7 +194,6 @@
     transition: all 0.2s;
   }
   .button-row.flex-wrap button { flex: unset; min-width: 48px; }
-  
   .button-row button:hover { background: #444; }
   .button-row button.active {
     background: #1e90ff;
@@ -186,9 +201,12 @@
     font-weight: bold;
   }
 
-  .controls { display: flex; align-items: center; gap: 1rem; margin-top: 1rem; }
+  .controls-group { margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid #444; }
+  .control-row { margin-bottom: 1rem; }
+  .control-row label { display: block; font-size: 0.8rem; color: #aaa; text-transform: uppercase; margin-bottom: 0.3rem; }
+  .slider-container { display: flex; align-items: center; gap: 1rem; }
   input[type="range"] { flex-grow: 1; cursor: pointer; }
-  .angle-display { font-weight: bold; min-width: 40px; text-align: right; }
+  .val-display { font-weight: bold; min-width: 45px; text-align: right; color: #fff; }
 
   .view-toggle {
     margin-top: 1.25rem;
@@ -210,7 +228,6 @@
     padding-top: 1rem;
     border-top: 1px solid #444;
   }
-
   .measurements h3 { margin: 0 0 1rem 0; font-size: 1rem; color: #4caf50; text-transform: uppercase; letter-spacing: 0.5px; }
 
   .stat-section { margin-bottom: 1rem; background: rgba(0, 0, 0, 0.2); padding: 0.75rem; border-radius: 6px; }
