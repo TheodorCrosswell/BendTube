@@ -6,10 +6,58 @@
   import { browser } from '$app/environment';
   import conduitData from '$lib/data/conduit-sizes.json';
 
+  // --- 3D Scene Target State ---
   let bendAngle = $state(0);
-  let bendRotation = $state(0); // New State: Rotation around the pipe's axis
+  let bendRotation = $state(0); // Rotation passed to the 3D scene
   let bendPosition = $state(60); // Starts the bend at the halfway mark by default
   let isOrthographic = $state(false);
+
+  // --- UI Slider State (Allows negative angles) ---
+  let uiBendAngle = $state(0);
+  let uiBendRotation = $state(0);
+
+  // Helper functions for wrapping/comparing rotations
+  function wrap360(val: number) {
+    let v = val % 360;
+    return v < 0 ? v + 360 : v;
+  }
+
+  function angleDiff(a: number, b: number) {
+    let d = Math.abs(a - b) % 360;
+    return d > 180 ? 360 - d : d;
+  }
+
+  // Sync UI -> Scene Angle
+  $effect(() => {
+    let absUI = Math.abs(uiBendAngle);
+    if (Math.abs(bendAngle - absUI) > 0.001) {
+      bendAngle = absUI;
+    }
+  });
+
+  // Sync Scene -> UI Angle (if updated by 3D drag handles)
+  $effect(() => {
+    let absUI = Math.abs(uiBendAngle);
+    if (Math.abs(bendAngle - absUI) > 0.001) {
+      uiBendAngle = uiBendAngle < 0 ? -bendAngle : bendAngle;
+    }
+  });
+
+  // Sync UI -> Scene Rotation (Flips by 180deg when UI angle is negative)
+  $effect(() => {
+    let targetRot = wrap360(uiBendRotation + (uiBendAngle < 0 ? 180 : 0));
+    if (angleDiff(bendRotation, targetRot) > 0.001) {
+      bendRotation = targetRot;
+    }
+  });
+
+  // Sync Scene -> UI Rotation (if updated by 3D drag handles)
+  $effect(() => {
+    let expectedSceneRot = wrap360(uiBendRotation + (uiBendAngle < 0 ? 180 : 0));
+    if (angleDiff(bendRotation, expectedSceneRot) > 0.001) {
+      uiBendRotation = wrap360(bendRotation + (uiBendAngle < 0 ? 180 : 0));
+    }
+  });
 
   // --- UI Layout State ---
   let leftPanelOpen = $state(true);
@@ -110,8 +158,9 @@
       <div class="control-row">
         <label>Bend Angle
         <div class="slider-container">
-          <input type="range" min="0" max="110" bind:value={bendAngle} />
-          <span class="val-display">{Math.round(bendAngle)}&deg;</span>
+          <!-- Expanded range down to -110 bound to our UI State -->
+          <input type="range" min="-110" max="110" bind:value={uiBendAngle} />
+          <span class="val-display">{Math.round(uiBendAngle)}&deg;</span>
         </div>
         </label>
         
@@ -119,8 +168,8 @@
         <div class="quick-angles button-row flex-wrap">
           {#each quickAngles as angle}
             <button 
-              class:active={bendAngle === angle}
-              onclick={() => bendAngle = angle}
+              class:active={uiBendAngle === angle}
+              onclick={() => uiBendAngle = angle}
             >
               {angle}&deg;
             </button>
@@ -131,8 +180,8 @@
       <div class="control-row">
         <label>Bend Rotation (Roll)
         <div class="slider-container">
-          <input type="range" min="0" max="360" bind:value={bendRotation} />
-          <span class="val-display">{Math.round(bendRotation)}&deg;</span>
+          <input type="range" min="0" max="360" bind:value={uiBendRotation} />
+          <span class="val-display">{Math.round(uiBendRotation)}&deg;</span>
         </div>
         </label>
 
@@ -140,8 +189,8 @@
         <div class="quick-angles button-row flex-wrap">
           {#each quickRotations as rot}
             <button 
-              class:active={bendRotation === rot}
-              onclick={() => bendRotation = rot}
+              class:active={uiBendRotation === rot}
+              onclick={() => uiBendRotation = rot}
             >
               {rot}&deg;
             </button>
