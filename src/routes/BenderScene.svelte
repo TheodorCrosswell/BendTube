@@ -204,10 +204,10 @@
   </T.PerspectiveCamera>
 {/if}
 
-<!-- 3D Coordinate Grids - Centered against the pipe length -->
-<Grid sectionSize={20} cellSize={4} position={[60, 0, 0]} sectionColor="#888888" cellColor="#444444" fadeDistance={250} />
-<Grid sectionSize={20} cellSize={4} position={[60, 0, 0]} rotation.x={Math.PI / 2} sectionColor="#888888" cellColor="#444444" fadeDistance={250} />
-<Grid sectionSize={20} cellSize={4} position={[60, 0, 0]} rotation.z={Math.PI / 2} sectionColor="#888888" cellColor="#444444" fadeDistance={250} />
+<!-- 3D Coordinate Grids - Exactly 120x120 inches with 1-inch cells -->
+<Grid gridSize={[120, 120]} sectionSize={12} cellSize={1} position={[60, 0, 0]} sectionColor="#888888" cellColor="#444444" fadeDistance={250} />
+<Grid gridSize={[120, 120]} sectionSize={12} cellSize={1} position={[60, 60, 0]} rotation.x={Math.PI / 2} sectionColor="#888888" cellColor="#444444" fadeDistance={250} />
+<Grid gridSize={[120, 120]} sectionSize={12} cellSize={1} position={[60, 60, 0]} rotation.z={Math.PI / 2} sectionColor="#888888" cellColor="#444444" fadeDistance={250} />
 
 <T.Mesh castShadow receiveShadow>
   <T.TubeGeometry bind:ref={tubeGeom} args={[curve, 100, pipeRadius, 16, false]} />
