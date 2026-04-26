@@ -1,44 +1,236 @@
 {
-  "conduit_standards": {
-    "unit_of_measurement": "inches",
-    "source": "NEC Chapter 9 Table 4",
-    "EMT": [
-      { "trade_size": "1/2", "outer_diameter": 0.706, "inner_diameter": 0.622 },
-      { "trade_size": "3/4", "outer_diameter": 0.922, "inner_diameter": 0.824 },
-      { "trade_size": "1", "outer_diameter": 1.163, "inner_diameter": 1.049 },
-      { "trade_size": "1-1/4", "outer_diameter": 1.510, "inner_diameter": 1.380 },
-      { "trade_size": "1-1/2", "outer_diameter": 1.740, "inner_diameter": 1.610 },
-      { "trade_size": "2", "outer_diameter": 2.197, "inner_diameter": 2.067 },
-      { "trade_size": "2-1/2", "outer_diameter": 2.875, "inner_diameter": 2.731 },
-      { "trade_size": "3", "outer_diameter": 3.500, "inner_diameter": 3.356 },
-      { "trade_size": "3-1/2", "outer_diameter": 4.000, "inner_diameter": 3.834 },
-      { "trade_size": "4", "outer_diameter": 4.500, "inner_diameter": 4.334 }
-    ],
-    "IMC": [
-      { "trade_size": "1/2", "outer_diameter": 0.815, "inner_diameter": 0.660 },
-      { "trade_size": "3/4", "outer_diameter": 1.029, "inner_diameter": 0.864 },
-      { "trade_size": "1", "outer_diameter": 1.290, "inner_diameter": 1.102 },
-      { "trade_size": "1-1/4", "outer_diameter": 1.638, "inner_diameter": 1.448 },
-      { "trade_size": "1-1/2", "outer_diameter": 1.883, "inner_diameter": 1.683 },
-      { "trade_size": "2", "outer_diameter": 2.360, "inner_diameter": 2.150 },
-      { "trade_size": "2-1/2", "outer_diameter": 2.857, "inner_diameter": 2.557 },
-      { "trade_size": "3", "outer_diameter": 3.476, "inner_diameter": 3.176 },
-      { "trade_size": "3-1/2", "outer_diameter": 3.971, "inner_diameter": 3.671 },
-      { "trade_size": "4", "outer_diameter": 4.466, "inner_diameter": 4.166 }
-    ],
-    "Rigid": [
-      { "trade_size": "1/2", "outer_diameter": 0.840, "inner_diameter": 0.632 },
-      { "trade_size": "3/4", "outer_diameter": 1.050, "inner_diameter": 0.836 },
-      { "trade_size": "1", "outer_diameter": 1.315, "inner_diameter": 1.063 },
-      { "trade_size": "1-1/4", "outer_diameter": 1.660, "inner_diameter": 1.394 },
-      { "trade_size": "1-1/2", "outer_diameter": 1.900, "inner_diameter": 1.624 },
-      { "trade_size": "2", "outer_diameter": 2.375, "inner_diameter": 2.083 },
-      { "trade_size": "2-1/2", "outer_diameter": 2.875, "inner_diameter": 2.489 },
-      { "trade_size": "3", "outer_diameter": 3.500, "inner_diameter": 3.090 },
-      { "trade_size": "3-1/2", "outer_diameter": 4.000, "inner_diameter": 3.570 },
-      { "trade_size": "4", "outer_diameter": 4.500, "inner_diameter": 4.050 },
-      { "trade_size": "5", "outer_diameter": 5.563, "inner_diameter": 5.073 },
-      { "trade_size": "6", "outer_diameter": 6.625, "inner_diameter": 6.093 }
-    ]
-  }
+	"conduit_standards": {
+		"unit_of_measurement": "inches",
+		"source": "NEC Chapter 9 Table 4 & Table 2",
+		"EMT": [
+			{
+				"trade_size": "1/2",
+				"outer_diameter": 0.706,
+				"inner_diameter": 0.622,
+				"bender_deduct": 5,
+				"centerline_radius": 4.34
+			},
+			{
+				"trade_size": "3/4",
+				"outer_diameter": 0.922,
+				"inner_diameter": 0.824,
+				"bender_deduct": 6,
+				"centerline_radius": 5.2
+			},
+			{
+				"trade_size": "1",
+				"outer_diameter": 1.163,
+				"inner_diameter": 1.049,
+				"bender_deduct": 8,
+				"centerline_radius": 6.5
+			},
+			{
+				"trade_size": "1-1/4",
+				"outer_diameter": 1.51,
+				"inner_diameter": 1.38,
+				"bender_deduct": 11,
+				"centerline_radius": 7.25
+			},
+			{
+				"trade_size": "1-1/2",
+				"outer_diameter": 1.74,
+				"inner_diameter": 1.61,
+				"bender_deduct": null,
+				"centerline_radius": 8.25
+			},
+			{
+				"trade_size": "2",
+				"outer_diameter": 2.197,
+				"inner_diameter": 2.067,
+				"bender_deduct": null,
+				"centerline_radius": 9.5
+			},
+			{
+				"trade_size": "2-1/2",
+				"outer_diameter": 2.875,
+				"inner_diameter": 2.731,
+				"bender_deduct": null,
+				"centerline_radius": 10.5
+			},
+			{
+				"trade_size": "3",
+				"outer_diameter": 3.5,
+				"inner_diameter": 3.356,
+				"bender_deduct": null,
+				"centerline_radius": 13.0
+			},
+			{
+				"trade_size": "3-1/2",
+				"outer_diameter": 4.0,
+				"inner_diameter": 3.834,
+				"bender_deduct": null,
+				"centerline_radius": 15.0
+			},
+			{
+				"trade_size": "4",
+				"outer_diameter": 4.5,
+				"inner_diameter": 4.334,
+				"bender_deduct": null,
+				"centerline_radius": 16.0
+			}
+		],
+		"IMC": [
+			{
+				"trade_size": "1/2",
+				"outer_diameter": 0.815,
+				"inner_diameter": 0.66,
+				"bender_deduct": 6,
+				"centerline_radius": 5.2
+			},
+			{
+				"trade_size": "3/4",
+				"outer_diameter": 1.029,
+				"inner_diameter": 0.864,
+				"bender_deduct": 8,
+				"centerline_radius": 6.5
+			},
+			{
+				"trade_size": "1",
+				"outer_diameter": 1.29,
+				"inner_diameter": 1.102,
+				"bender_deduct": 11,
+				"centerline_radius": 7.25
+			},
+			{
+				"trade_size": "1-1/4",
+				"outer_diameter": 1.638,
+				"inner_diameter": 1.448,
+				"bender_deduct": null,
+				"centerline_radius": 7.25
+			},
+			{
+				"trade_size": "1-1/2",
+				"outer_diameter": 1.883,
+				"inner_diameter": 1.683,
+				"bender_deduct": null,
+				"centerline_radius": 8.25
+			},
+			{
+				"trade_size": "2",
+				"outer_diameter": 2.36,
+				"inner_diameter": 2.15,
+				"bender_deduct": null,
+				"centerline_radius": 9.5
+			},
+			{
+				"trade_size": "2-1/2",
+				"outer_diameter": 2.857,
+				"inner_diameter": 2.557,
+				"bender_deduct": null,
+				"centerline_radius": 10.5
+			},
+			{
+				"trade_size": "3",
+				"outer_diameter": 3.476,
+				"inner_diameter": 3.176,
+				"bender_deduct": null,
+				"centerline_radius": 13.0
+			},
+			{
+				"trade_size": "3-1/2",
+				"outer_diameter": 3.971,
+				"inner_diameter": 3.671,
+				"bender_deduct": null,
+				"centerline_radius": 15.0
+			},
+			{
+				"trade_size": "4",
+				"outer_diameter": 4.466,
+				"inner_diameter": 4.166,
+				"bender_deduct": null,
+				"centerline_radius": 16.0
+			}
+		],
+		"Rigid": [
+			{
+				"trade_size": "1/2",
+				"outer_diameter": 0.84,
+				"inner_diameter": 0.632,
+				"bender_deduct": 6,
+				"centerline_radius": 5.2
+			},
+			{
+				"trade_size": "3/4",
+				"outer_diameter": 1.05,
+				"inner_diameter": 0.836,
+				"bender_deduct": 8,
+				"centerline_radius": 6.5
+			},
+			{
+				"trade_size": "1",
+				"outer_diameter": 1.315,
+				"inner_diameter": 1.063,
+				"bender_deduct": 11,
+				"centerline_radius": 7.25
+			},
+			{
+				"trade_size": "1-1/4",
+				"outer_diameter": 1.66,
+				"inner_diameter": 1.394,
+				"bender_deduct": null,
+				"centerline_radius": 7.25
+			},
+			{
+				"trade_size": "1-1/2",
+				"outer_diameter": 1.9,
+				"inner_diameter": 1.624,
+				"bender_deduct": null,
+				"centerline_radius": 8.25
+			},
+			{
+				"trade_size": "2",
+				"outer_diameter": 2.375,
+				"inner_diameter": 2.083,
+				"bender_deduct": null,
+				"centerline_radius": 9.5
+			},
+			{
+				"trade_size": "2-1/2",
+				"outer_diameter": 2.875,
+				"inner_diameter": 2.489,
+				"bender_deduct": null,
+				"centerline_radius": 10.5
+			},
+			{
+				"trade_size": "3",
+				"outer_diameter": 3.5,
+				"inner_diameter": 3.09,
+				"bender_deduct": null,
+				"centerline_radius": 13.0
+			},
+			{
+				"trade_size": "3-1/2",
+				"outer_diameter": 4.0,
+				"inner_diameter": 3.57,
+				"bender_deduct": null,
+				"centerline_radius": 15.0
+			},
+			{
+				"trade_size": "4",
+				"outer_diameter": 4.5,
+				"inner_diameter": 4.05,
+				"bender_deduct": null,
+				"centerline_radius": 16.0
+			},
+			{
+				"trade_size": "5",
+				"outer_diameter": 5.563,
+				"inner_diameter": 5.073,
+				"bender_deduct": null,
+				"centerline_radius": 24.0
+			},
+			{
+				"trade_size": "6",
+				"outer_diameter": 6.625,
+				"inner_diameter": 6.093,
+				"bender_deduct": null,
+				"centerline_radius": 30.0
+			}
+		]
+	}
 }
