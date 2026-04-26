@@ -4,10 +4,15 @@
 	import { OrbitControls, Grid, interactivity } from '@threlte/extras';
 	import * as THREE from 'three';
 
+	interface BendState {
+		angle: number;
+		rotation: number;
+		position: number;
+	}
+
 	interface Props {
-		bendAngle?: number;
-		bendRotation?: number;
-		bendPosition?: number;
+		bends?: BendState[];
+		activeBendIndex?: number;
 		isOrthographic?: boolean;
 		outerDiameter?: number;
 		conduitSize?: string;
@@ -24,9 +29,8 @@
 	}
 
 	let {
-		bendAngle = $bindable(0),
-		bendRotation = $bindable(0),
-		bendPosition = $bindable(60),
+		bends = $bindable([{ angle: 0, rotation: 0, position: 60 }]),
+		activeBendIndex = $bindable(0),
 		isOrthographic = false,
 		outerDiameter = 0.706,
 		conduitSize = '1/2',
@@ -47,20 +51,11 @@
 	let tubeGeom = $state<THREE.TubeGeometry | undefined>(undefined);
 
 	let pipeRadius = $derived(outerDiameter / 2);
-
-	// Scale the bend radius proportionately to the pipe's radius
 	let bendRadius = $derived(pipeRadius * 10);
 	let toolScaleFactor = $derived(bendRadius / 4);
 
-	let angleRad = $derived(bendAngle * (Math.PI / 180));
-
-	// Bender now translates along the pipe with bendPosition, and naturally subtracts
-	// bendRadius * angleRad to roll back into the curve without overriding the physical mechanic
-	let benderX = $derived(bendPosition - bendRadius * angleRad);
-
 	// --- Dynamic Canvas Texture for Conduit Text ---
 	let textTexture = $derived.by(() => {
-		// Prevent execution during SSR
 		if (typeof document === 'undefined') return undefined;
 
 		const canvas = document.createElement('canvas');
@@ -70,23 +65,18 @@
 		const text = `${conduitSize}" ${conduitType} Conduit ----- `;
 		const fontSize = 40;
 
-		// Set font to measure text length properly so we can tile it seamlessly
 		ctx.font = `bold ${fontSize}px sans-serif`;
 		const textWidth = Math.ceil(ctx.measureText(text).width);
 
-		// Width is exactly the text length; Height is the circumference map size (V axis)
 		canvas.width = textWidth;
 		canvas.height = 256;
 
-		// Context resets when canvas is resized, grab again
 		const ctx2 = canvas.getContext('2d');
 		if (!ctx2) return undefined;
 
-		// Fill background with original conduit color
 		ctx2.fillStyle = '#999999';
 		ctx2.fillRect(0, 0, canvas.width, canvas.height);
 
-		// Draw the continuous light-colored text
 		ctx2.fillStyle = '#e0e0e0';
 		ctx2.font = `bold ${fontSize}px sans-serif`;
 		ctx2.textAlign = 'center';
@@ -96,13 +86,8 @@
 		const texture = new THREE.CanvasTexture(canvas);
 		texture.wrapS = THREE.RepeatWrapping;
 		texture.wrapT = THREE.RepeatWrapping;
-
-		// Repeat along the 120" tube length (U axis)
 		texture.repeat.set(15, 1);
-
-		// Offset V axis to align text smoothly onto the "top" curve of the pipe
 		texture.offset.set(0, 0.25);
-
 		texture.colorSpace = THREE.SRGBColorSpace;
 		texture.needsUpdate = true;
 
@@ -116,21 +101,22 @@
 	let startAngle = $state(0);
 
 	const onPointerDown = (e: any) => {
+		if (!bends[activeBendIndex]) return;
 		isDragging = true;
 		startX = e.clientX;
 		startY = e.clientY;
-		startAngle = bendAngle;
+		startAngle = bends[activeBendIndex].angle;
 		document.body.style.cursor = 'grabbing';
 		e.stopPropagation();
 	};
 
 	const onPointerMove = (e: PointerEvent) => {
-		if (!isDragging) return;
+		if (!isDragging || !bends[activeBendIndex]) return;
 		const deltaX = e.clientX - startX;
 		const deltaY = e.clientY - startY;
 		const movement = deltaX + deltaY;
 		let newAngle = startAngle + movement * 0.4;
-		bendAngle = Math.max(0, Math.min(newAngle, 110));
+		bends[activeBendIndex].angle = Math.max(-110, Math.min(newAngle, 110));
 	};
 
 	const onPointerUp = () => {
@@ -140,9 +126,173 @@
 		}
 	};
 
-	// --- Performance Calculation (Reactive Effect instead of Polling) ---
+	// --- Dynamic Math: Sequential Frenet Frame Conduit Path ---
+	class ConduitCurve extends THREE.Curve<THREE.Vector3> {
+		bends: any[];
+		bendFrames: any[] = [];
+		totalLen: number;
+
+		constructor(bends: BendState[], R: number, totalLen: number = 120) {
+			super();
+			// Map physical constraints and sort multiple bends by distance sequentially
+			const mappedBends = bends
+				.map((b) => {
+					const angleDeg = Math.abs(b.angle);
+					// If negative drag applied, physically flip the pipe orientation
+					const rotDeg = (b.rotation + (b.angle < 0 ? 180 : 0)) % 360;
+					const angleRad = angleDeg * (Math.PI / 180);
+					const rotRad = rotDeg * (Math.PI / 180);
+					const arcLen = R * angleRad;
+					const L1 = b.position - arcLen;
+					return {
+						angleDeg,
+						rotDeg,
+						angleRad,
+						rotRad,
+						arcLen,
+						L1,
+						R,
+						position: b.position,
+						originalBend: b
+					};
+				})
+				.sort((a, b) => a.L1 - b.L1);
+
+			this.totalLen = totalLen;
+
+			let pos = new THREE.Vector3(0, 0, 0);
+			let dir = new THREE.Vector3(1, 0, 0);
+			let up = new THREE.Vector3(0, 1, 0);
+			let right = new THREE.Vector3(0, 0, 1);
+			let currentD = 0;
+
+			// Construct 3D reference frames (positions & rotations) iteratively along the pipe trajectory
+			for (const bend of mappedBends) {
+				if (bend.L1 !== currentD) {
+					pos.addScaledVector(dir, bend.L1 - currentD);
+					currentD = bend.L1;
+				}
+
+				const n = new THREE.Vector3()
+					.copy(up)
+					.multiplyScalar(Math.cos(bend.rotRad))
+					.addScaledVector(right, Math.sin(bend.rotRad));
+
+				const binormal = new THREE.Vector3().crossVectors(dir, n).normalize();
+				const center = new THREE.Vector3().copy(pos).addScaledVector(n, bend.R);
+
+				const frame = {
+					bend,
+					L1: bend.L1,
+					pos: pos.clone(),
+					dir: dir.clone(),
+					n: n.clone(),
+					binormal: binormal.clone(),
+					center: center.clone(),
+					posPast: new THREE.Vector3(),
+					dirPast: new THREE.Vector3()
+				};
+
+				const theta = bend.angleRad;
+				const v = new THREE.Vector3().copy(n).multiplyScalar(-1);
+
+				pos
+					.copy(center)
+					.addScaledVector(v, bend.R * Math.cos(theta))
+					.addScaledVector(dir, bend.R * Math.sin(theta));
+				currentD = bend.L1 + bend.arcLen;
+
+				const newDir = new THREE.Vector3()
+					.copy(dir)
+					.multiplyScalar(Math.cos(theta))
+					.addScaledVector(n, Math.sin(theta));
+
+				dir.copy(newDir).normalize();
+				up.applyAxisAngle(binormal, theta);
+				right.applyAxisAngle(binormal, theta);
+
+				frame.posPast.copy(pos);
+				frame.dirPast.copy(dir);
+
+				this.bendFrames.push(frame);
+			}
+		}
+
+		getPoint(t: number, optionalTarget = new THREE.Vector3()) {
+			const d = t * this.totalLen;
+			let currentD = 0;
+			let pos = new THREE.Vector3(0, 0, 0);
+			let dir = new THREE.Vector3(1, 0, 0);
+
+			for (const frame of this.bendFrames) {
+				const bend = frame.bend;
+
+				// Straight path leading into the bend
+				if (d <= frame.L1) {
+					pos.copy(frame.pos).addScaledVector(frame.dir, d - frame.L1);
+					return optionalTarget.copy(pos);
+				}
+
+				const bendEnd = frame.L1 + bend.arcLen;
+				// Curving path mapped around the bend rotation center
+				if (d <= bendEnd) {
+					const theta = (d - frame.L1) / bend.R;
+					const v = new THREE.Vector3().copy(frame.n).multiplyScalar(-1);
+					pos
+						.copy(frame.center)
+						.addScaledVector(v, bend.R * Math.cos(theta))
+						.addScaledVector(frame.dir, bend.R * Math.sin(theta));
+					return optionalTarget.copy(pos);
+				}
+
+				// Override and leap out to continue processing successive bends accurately
+				currentD = bendEnd;
+				pos.copy(frame.posPast);
+				dir.copy(frame.dirPast);
+			}
+
+			// Final run-off length
+			pos.addScaledVector(dir, d - currentD);
+			return optionalTarget.copy(pos);
+		}
+	}
+
+	let curve = $derived(new ConduitCurve(bends, bendRadius));
+
+	// Calculate and align mathematical frame tracking properties to global geometry
+	let activeBendFrame = $derived.by(() => {
+		const activeUIBend = bends[activeBendIndex];
+		if (!activeUIBend) return undefined;
+		return curve.bendFrames.find((f) => f.bend.originalBend === activeUIBend);
+	});
+
+	let toolPos = $derived.by(() => {
+		if (!activeBendFrame) return [0, 0, 0] as [number, number, number];
+		return [activeBendFrame.center.x, activeBendFrame.center.y, activeBendFrame.center.z] as [
+			number,
+			number,
+			number
+		];
+	});
+
+	let toolQuat = $derived.by(() => {
+		if (!activeBendFrame) return new THREE.Quaternion();
+		// Compute absolute global transform orientations from tracking binormals
+		const qBase = new THREE.Quaternion().setFromRotationMatrix(
+			new THREE.Matrix4().makeBasis(
+				activeBendFrame.dir,
+				activeBendFrame.n,
+				activeBendFrame.binormal
+			)
+		);
+		const localQuat = new THREE.Quaternion().setFromEuler(
+			new THREE.Euler(0, Math.PI, -activeBendFrame.bend.angleRad, 'XYZ')
+		);
+		return qBase.multiply(localQuat);
+	});
+
+	// --- Exact Performance Calculation ---
 	$effect(() => {
-		// Only triggers when tubeGeom is re-instantiated (which happens when the curve updates)
 		if (!tubeGeom) return;
 
 		tubeGeom.computeBoundingBox();
@@ -150,116 +300,35 @@
 		const size = new THREE.Vector3();
 		if (box) box.getSize(size);
 
-		const path = tubeGeom.parameters.path;
-		// Lowered resolution drastically for extreme performance gains while maintaining calculation accuracy
-		const points = path.getPoints(150);
-
-		let lenBefore = 0;
 		let lenBend = 0;
-		let lenAfter = 0;
-		let state = 'BEFORE';
+		for (const frame of curve.bendFrames) {
+			lenBend += frame.bend.arcLen;
+		}
 
-		for (let i = 0; i < points.length - 1; i++) {
-			const pA = points[i];
-			const pB = points[i + 1];
-			const dist = pA.distanceTo(pB);
+		const sortedFrames = [...curve.bendFrames].sort((a, b) => a.L1 - b.L1);
+		let beforeBend = 120;
+		let afterBend = 0;
 
-			if (i > 0 && i < points.length - 1) {
-				const pPrev = points[i - 1];
-				const vPrev = new THREE.Vector3().subVectors(pA, pPrev).normalize();
-				const vNext = new THREE.Vector3().subVectors(pB, pA).normalize();
-
-				const angle = vPrev.angleTo(vNext);
-				const isStraight = angle < 0.001;
-
-				if (state === 'BEFORE' && !isStraight) {
-					state = 'BEND';
-				} else if (state === 'BEND' && isStraight) {
-					state = 'AFTER';
-				}
-			}
-
-			if (state === 'BEFORE') lenBefore += dist;
-			else if (state === 'BEND') lenBend += dist;
-			else if (state === 'AFTER') lenAfter += dist;
+		if (sortedFrames.length > 0) {
+			beforeBend = Math.max(0, sortedFrames[0].L1);
+			const lastFrame = sortedFrames[sortedFrames.length - 1];
+			afterBend = Math.max(0, 120 - (lastFrame.L1 + lastFrame.bend.arcLen));
 		}
 
 		stats = {
-			beforeBend: lenBefore,
+			beforeBend,
 			inBend: lenBend,
-			afterBend: lenAfter,
-			total: lenBefore + lenBend + lenAfter,
+			afterBend,
+			total: beforeBend + lenBend + afterBend,
 			width: size.x,
 			height: size.y,
 			depth: size.z
 		};
 	});
-
-	// --- Dynamic Math: Conduit Path Curve ---
-	class ConduitCurve extends THREE.Curve<THREE.Vector3> {
-		angleDeg: number;
-		R: number;
-		bendPos: number;
-		rotDeg: number;
-		totalLen: number;
-
-		constructor(angleDeg: number, R: number, bendPos: number, rotDeg: number) {
-			super();
-			this.angleDeg = angleDeg;
-			this.R = R;
-			this.bendPos = bendPos;
-			this.rotDeg = rotDeg;
-			this.totalLen = 120; // Exact length 120", starts at 0, 0
-		}
-
-		getPoint(t: number, optionalTarget = new THREE.Vector3()) {
-			const angleRad = this.angleDeg * (Math.PI / 180);
-			const rotRad = this.rotDeg * (Math.PI / 180);
-			const arcLen = this.R * angleRad;
-			const L1 = this.bendPos - arcLen;
-			const d = t * this.totalLen;
-
-			if (d <= L1) {
-				// Straight portion before bend begins
-				return optionalTarget.set(d, 0, 0);
-			} else if (d <= L1 + arcLen) {
-				// Bend curve
-				const theta = (d - L1) / this.R;
-
-				// Calculate the native Y coordinate (the bend height relative to the pipe)
-				const baseY = this.R + this.R * Math.sin(-Math.PI / 2 + theta);
-
-				return optionalTarget.set(
-					L1 + this.R * Math.cos(-Math.PI / 2 + theta),
-					baseY * Math.cos(rotRad), // Resolve the Y rotation into space
-					baseY * Math.sin(rotRad) // Resolve the Z rotation into space
-				);
-			} else {
-				// Straight continuation after the bend finishes
-				const straightD = d - (L1 + arcLen);
-				const endAngle = -Math.PI / 2 + angleRad;
-				const px = L1 + this.R * Math.cos(endAngle);
-				const py = this.R + this.R * Math.sin(endAngle);
-
-				// Calculate the native continuation Y coordinate
-				const baseY = py + straightD * Math.sin(angleRad);
-
-				return optionalTarget.set(
-					px + straightD * Math.cos(angleRad),
-					baseY * Math.cos(rotRad), // Resolve into 3D Space
-					baseY * Math.sin(rotRad)
-				);
-			}
-		}
-	}
-
-	// Inject the new bendRotation property into the geometry calculations
-	let curve = $derived(new ConduitCurve(bendAngle, bendRadius, bendPosition, bendRotation));
 </script>
 
 <svelte:window onpointermove={onPointerMove} onpointerup={onPointerUp} />
 
-<!-- Cameras adjusted to center look-target on the middle of the 0-120 length pipe -->
 {#if isOrthographic}
 	<T.OrthographicCamera makeDefault position={[60, 10, 100]} zoom={10}>
 		<OrbitControls enableDamping target={[60, 5, 0]} enabled={!isDragging} />
@@ -270,7 +339,6 @@
 	</T.PerspectiveCamera>
 {/if}
 
-<!-- 3D Coordinate Grids - Exactly 120x120 inches with 1-inch cells -->
 <Grid
 	gridSize={[120, 120]}
 	sectionSize={12}
@@ -302,24 +370,15 @@
 />
 
 <T.Mesh>
-	<!-- Conduit radial resolution lowered from 16 to 12 -->
 	<T.TubeGeometry bind:ref={tubeGeom} args={[curve, 100, pipeRadius, 12, false]} />
-	<!-- Switched to MeshBasicMaterial, removed metalness and roughness -->
 	<T.MeshBasicMaterial color={textTexture ? '#ffffff' : '#999999'} map={textTexture || null} />
 </T.Mesh>
 
-<!-- Bender Tool Pivot Group - This parent group tracks the 0-360 rotation of the bend roll-->
-<T.Group rotation.x={bendRotation * (Math.PI / 180)}>
-	<T.Group
-		position={[benderX, bendRadius, 0]}
-		rotation.z={-angleRad}
-		rotation.y={Math.PI}
-		scale={toolScaleFactor}
-	>
+<!-- Bender Tool Anchor mapped perfectly inside multiple sequential tracking coordinates -->
+{#if activeBendFrame}
+	<T.Group position={toolPos} quaternion={toolQuat.toArray()} scale={toolScaleFactor}>
 		<T.Mesh rotation.z={-Math.PI / 2}>
-			<!-- Torus segments halved from 64 to 32 -->
 			<T.TorusGeometry args={[4, 0.45, 16, 32, Math.PI / 2 + 0.1]} />
-			<!-- Switched to basic material, removed PBR calculation properties -->
 			<T.MeshBasicMaterial color="#1e90ff" />
 		</T.Mesh>
 
@@ -332,7 +391,6 @@
 			}}
 		>
 			<T.Mesh position={[0, 4, 0]}>
-				<!-- Cylinder segments reduced from 16 to 8 -->
 				<T.CylinderGeometry args={[0.15, 0.15, 16, 8]} />
 				<T.MeshBasicMaterial color="#333333" />
 			</T.Mesh>
@@ -343,4 +401,4 @@
 			</T.Mesh>
 		</T.Group>
 	</T.Group>
-</T.Group>
+{/if}
