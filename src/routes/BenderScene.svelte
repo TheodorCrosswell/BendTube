@@ -331,11 +331,11 @@
 
 {#if isOrthographic}
 	<T.OrthographicCamera makeDefault position={[60, 10, 100]} zoom={10}>
-		<OrbitControls enableDamping target={[60, 5, 0]} enabled={!isDragging} />
+		<OrbitControls target={[60, 5, 0]} enabled={!isDragging} />
 	</T.OrthographicCamera>
 {:else}
 	<T.PerspectiveCamera makeDefault position={[60, 10, 100]} fov={45}>
-		<OrbitControls enableDamping target={[60, 5, 0]} enabled={!isDragging} />
+		<OrbitControls target={[60, 5, 0]} enabled={!isDragging} />
 	</T.PerspectiveCamera>
 {/if}
 
