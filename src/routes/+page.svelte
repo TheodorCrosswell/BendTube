@@ -109,7 +109,7 @@
 		<div class="selector-group">
 			<h4>Conduit Type</h4>
 			<div class="button-row">
-				{#each conduitTypes as type}
+				{#each conduitTypes as type (type)}
 					<button class:active={selectedType === type} onclick={() => (selectedType = type)}>
 						{type}
 					</button>
@@ -121,7 +121,7 @@
 		<div class="selector-group">
 			<h4>Trade Size</h4>
 			<div class="button-row flex-wrap">
-				{#each availableSizes as size}
+				{#each availableSizes as size (size)}
 					<button class:active={selectedSize === size} onclick={() => (selectedSize = size)}>
 						{size}"
 					</button>
@@ -158,7 +158,7 @@
 
 				<!-- Quick Select Buttons -->
 				<div class="quick-angles button-row flex-wrap">
-					{#each quickAngles as angle}
+					{#each quickAngles as angle (angle)}
 						<button
 							class:active={bends[activeBendIndex].angle === angle}
 							onclick={() => (bends[activeBendIndex].angle = angle)}
@@ -180,7 +180,7 @@
 
 				<!-- Quick Select Buttons for Orientation -->
 				<div class="quick-angles button-row flex-wrap">
-					{#each quickRotations as rot}
+					{#each quickRotations as rot (rot)}
 						<button
 							class:active={bends[activeBendIndex].rotation === rot}
 							onclick={() => (bends[activeBendIndex].rotation = rot)}

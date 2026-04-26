@@ -10,6 +10,30 @@
 		position: number;
 	}
 
+	interface MappedBend {
+		angleDeg: number;
+		rotDeg: number;
+		angleRad: number;
+		rotRad: number;
+		arcLen: number;
+		L1: number;
+		R: number;
+		position: number;
+		originalBend: BendState;
+	}
+
+	interface BendFrame {
+		bend: MappedBend;
+		L1: number;
+		pos: THREE.Vector3;
+		dir: THREE.Vector3;
+		n: THREE.Vector3;
+		binormal: THREE.Vector3;
+		center: THREE.Vector3;
+		posPast: THREE.Vector3;
+		dirPast: THREE.Vector3;
+	}
+
 	interface Props {
 		bends?: BendState[];
 		activeBendIndex?: number;
@@ -35,6 +59,7 @@
 		outerDiameter = 0.706,
 		conduitSize = '1/2',
 		conduitType = 'EMT',
+		// eslint-disable-next-line no-useless-assignment
 		stats = $bindable({
 			beforeBend: 0,
 			inBend: 0,
@@ -100,7 +125,7 @@
 	let startY = $state(0);
 	let startAngle = $state(0);
 
-	const onPointerDown = (e: any) => {
+	const onPointerDown = (e: PointerEvent) => {
 		if (!bends[activeBendIndex]) return;
 		isDragging = true;
 		startX = e.clientX;
@@ -128,8 +153,7 @@
 
 	// --- Dynamic Math: Sequential Frenet Frame Conduit Path ---
 	class ConduitCurve extends THREE.Curve<THREE.Vector3> {
-		bends: any[];
-		bendFrames: any[] = [];
+		bendFrames: BendFrame[] = [];
 		totalLen: number;
 
 		constructor(bends: BendState[], R: number, totalLen: number = 120) {
@@ -170,7 +194,6 @@
 			for (const bend of mappedBends) {
 				if (bend.L1 !== currentD) {
 					pos.addScaledVector(dir, bend.L1 - currentD);
-					currentD = bend.L1;
 				}
 
 				const n = new THREE.Vector3()
@@ -181,7 +204,7 @@
 				const binormal = new THREE.Vector3().crossVectors(dir, n).normalize();
 				const center = new THREE.Vector3().copy(pos).addScaledVector(n, bend.R);
 
-				const frame = {
+				const frame: BendFrame = {
 					bend,
 					L1: bend.L1,
 					pos: pos.clone(),
