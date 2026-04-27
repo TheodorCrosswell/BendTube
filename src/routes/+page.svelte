@@ -2,7 +2,7 @@
 <script lang="ts">
 	import { Canvas } from '@threlte/core';
 	import * as THREE from 'three';
-	import BenderScene from './BenderScene.svelte';
+	import BenderScene from '../lib/components/BenderScene.svelte';
 	import { browser } from '$app/environment';
 	import conduitData from '$lib/data/conduit-sizes.json';
 
