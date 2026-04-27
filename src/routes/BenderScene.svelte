@@ -8,6 +8,7 @@
 		angle: number;
 		rotation: number;
 		position: number;
+		mark: 'star' | 'arrow';
 	}
 
 	interface MappedBend {
@@ -41,7 +42,6 @@
 		outerDiameter?: number;
 		conduitSize?: string;
 		conduitType?: string;
-		bendMark?: 'star' | 'arrow';
 		stats?: {
 			beforeBend: number;
 			inBend: number;
@@ -54,13 +54,12 @@
 	}
 
 	let {
-		bends = $bindable([{ angle: 0, rotation: 0, position: 60 }]),
+		bends = $bindable([{ angle: 0, rotation: 0, position: 60, mark: 'star' }]),
 		activeBendIndex = $bindable(0),
 		isOrthographic = false,
 		outerDiameter = 0.706,
 		conduitSize = '1/2',
 		conduitType = 'EMT',
-		bendMark = 'star',
 		// eslint-disable-next-line no-useless-assignment
 		stats = $bindable({
 			beforeBend: 0,
@@ -161,7 +160,7 @@
 		const deltaY = e.clientY - startY;
 
 		// Adjust drag direction to feel intuitive depending on the bender alignment
-		const movement = bendMark === 'arrow' ? -deltaX + deltaY : deltaX + deltaY;
+		const movement = bends[activeBendIndex].mark === 'arrow' ? -deltaX + deltaY : deltaX + deltaY;
 
 		let newAngle = startAngle + movement * 0.4;
 		bends[activeBendIndex].angle = Math.max(-110, Math.min(newAngle, 110));
@@ -183,7 +182,6 @@
 			bends: BendState[],
 			R: number,
 			pipeRadius: number,
-			bendMark: 'star' | 'arrow' = 'star',
 			deduction: number = 5,
 			totalLen: number = 120
 		) {
@@ -200,7 +198,7 @@
 
 					let L1: number;
 
-					if (bendMark === 'star') {
+					if (b.mark === 'star') {
 						// Fixed physical offset from the front of the shoe to the "Star" mark.
 						// This value ensures the outer edge of a 90-degree bend equals b.position perfectly.
 						const starOffset = R * (Math.PI / 2) - R - pipeRadius;
@@ -326,7 +324,7 @@
 		}
 	}
 
-	let curve = $derived(new ConduitCurve(bends, bendRadius, pipeRadius, bendMark, deduction));
+	let curve = $derived(new ConduitCurve(bends, bendRadius, pipeRadius, deduction));
 
 	// Calculate and align mathematical frame tracking properties to global geometry
 	let activeBendFrame = $derived.by(() => {
@@ -356,7 +354,7 @@
 		);
 
 		let localEuler: THREE.Euler;
-		if (bendMark === 'star') {
+		if (activeBendFrame.bend.originalBend.mark === 'star') {
 			// Star mark: tool faces backward, handle visually maps negative angle
 			localEuler = new THREE.Euler(0, Math.PI, -activeBendFrame.bend.angleRad, 'XYZ');
 		} else {

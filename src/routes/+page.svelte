@@ -6,8 +6,8 @@
 	import { browser } from '$app/environment';
 	import conduitData from '$lib/data/conduit-sizes.json';
 
-	type Bend = { angle: number; rotation: number; position: number };
-	let bends = $state<Bend[]>([{ angle: 0, rotation: 0, position: 60 }]);
+	type Bend = { angle: number; rotation: number; position: number; mark: 'star' | 'arrow' };
+	let bends = $state<Bend[]>([{ angle: 0, rotation: 0, position: 60, mark: 'star' }]);
 	let activeBendIndex = $state(0);
 
 	let isOrthographic = $state(false);
@@ -22,7 +22,6 @@
 	let sizesForType = $derived(standards[selectedType]);
 	let availableSizes = $derived(sizesForType.map((s) => s.trade_size));
 	let selectedSize = $state('1/2');
-	let bendMark = $state<'star' | 'arrow'>('star');
 
 	$effect(() => {
 		if (!availableSizes.includes(selectedSize)) {
@@ -87,7 +86,7 @@
 			<div class="bend-actions-row">
 				<button
 					onclick={() => {
-						bends.push({ angle: 0, rotation: 0, position: 60 });
+						bends.push({ angle: 0, rotation: 0, position: 60, mark: 'star' });
 						activeBendIndex = bends.length - 1;
 					}}
 				>
@@ -130,14 +129,20 @@
 			</div>
 		</div>
 
-		<!-- Bend Mark Selection -->
+		<!-- Bend Mark Selection (Per Bend) -->
 		<div class="selector-group">
 			<h4>Bend Mark</h4>
 			<div class="button-row">
-				<button class:active={bendMark === 'star'} onclick={() => (bendMark = 'star')}>
+				<button
+					class:active={bends[activeBendIndex].mark === 'star'}
+					onclick={() => (bends[activeBendIndex].mark = 'star')}
+				>
 					Star Mark
 				</button>
-				<button class:active={bendMark === 'arrow'} onclick={() => (bendMark = 'arrow')}>
+				<button
+					class:active={bends[activeBendIndex].mark === 'arrow'}
+					onclick={() => (bends[activeBendIndex].mark = 'arrow')}
+				>
 					Arrow Mark
 				</button>
 			</div>
@@ -250,7 +255,6 @@
 				{outerDiameter}
 				conduitSize={selectedSize}
 				conduitType={selectedType}
-				{bendMark}
 				bind:stats
 			/>
 		</Canvas>
