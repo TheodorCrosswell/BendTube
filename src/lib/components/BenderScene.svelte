@@ -7,6 +7,7 @@
 	import { ConduitCurve } from '$lib/math/ConduitCurve';
 	import { generateConduitTexture } from '$lib/utils/conduitTexture';
 	import { getBenderDeduction } from '$lib/utils/benderDeduction';
+	import conduitSizes from '$lib/data/conduit-sizes.json';
 
 	let {
 		bends = $bindable([{ angle: 0, rotation: 0, position: 60, mark: 'star' }]),
@@ -32,6 +33,14 @@
 
 	let tubeGeom = $state<THREE.TubeGeometry | undefined>(undefined);
 
+	// Strictly typed camera references to fix assignment errors
+	let orthoCameraRef = $state<THREE.OrthographicCamera | undefined>(undefined);
+	let perspCameraRef = $state<THREE.PerspectiveCamera | undefined>(undefined);
+	let cameraRef = $derived(isOrthographic ? orthoCameraRef : perspCameraRef);
+
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	let controlsRef = $state<any>(undefined);
+
 	let pipeRadius = $derived(outerDiameter / 2);
 	let bendRadius = $derived(pipeRadius * 10);
 	let toolScaleFactor = $derived(bendRadius / 4);
@@ -41,6 +50,42 @@
 
 	// --- Dynamic Canvas Texture for Conduit Text ---
 	let textTexture = $derived(generateConduitTexture(conduitSize, conduitType));
+
+	// --- Dynamic Math: Sequential Frenet Frame Conduit Path ---
+	let curve = $derived(new ConduitCurve(bends, bendRadius, pipeRadius, deduction));
+
+	let conduitData = $derived(
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		(conduitSizes.conduit_standards as any)[conduitType]?.find(
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			(c: any) => c.trade_size === conduitSize
+		)
+	);
+
+	let innerRadius = $derived(
+		conduitData
+			? pipeRadius * (conduitData.inner_diameter / conduitData.outer_diameter)
+			: pipeRadius * 0.8
+	);
+
+	let startPoint = $derived(curve.getPoint(0).toArray());
+	let endPoint = $derived(curve.getPoint(1).toArray());
+
+	let startQuaternion = $derived.by(() => {
+		const tangent = curve.getTangent(0).normalize();
+		const q = new THREE.Quaternion();
+		// The start cap sits at t=0 facing backward
+		q.setFromUnitVectors(new THREE.Vector3(0, 0, 1), tangent.clone().negate());
+		return q.toArray();
+	});
+
+	let endQuaternion = $derived.by(() => {
+		const tangent = curve.getTangent(1).normalize();
+		const q = new THREE.Quaternion();
+		// The end cap sits at t=1 facing forward
+		q.setFromUnitVectors(new THREE.Vector3(0, 0, 1), tangent);
+		return q.toArray();
+	});
 
 	// --- Dragging Logic ---
 	let isDragging = $state(false);
@@ -113,9 +158,6 @@
 		}
 	};
 
-	// --- Dynamic Math: Sequential Frenet Frame Conduit Path ---
-	let curve = $derived(new ConduitCurve(bends, bendRadius, pipeRadius, deduction));
-
 	// Calculate and align mathematical frame tracking properties to global geometry
 	let activeBendFrame = $derived.by(() => {
 		const activeUIBend = bends[activeBendIndex];
@@ -124,12 +166,12 @@
 	});
 
 	let toolPos = $derived.by(() => {
-		if (!activeBendFrame) return [0, 0, 0] as [number, number, number];
-		return [activeBendFrame.center.x, activeBendFrame.center.y, activeBendFrame.center.z] as [
-			number,
-			number,
-			number
-		];
+		if (!activeBendFrame) return [0, pipeRadius, pipeRadius] as [number, number, number];
+		return [
+			activeBendFrame.center.x,
+			activeBendFrame.center.y + pipeRadius,
+			activeBendFrame.center.z + pipeRadius
+		] as [number, number, number];
 	});
 
 	let toolQuat = $derived.by(() => {
@@ -154,6 +196,49 @@
 
 		const localQuat = new THREE.Quaternion().setFromEuler(localEuler);
 		return qBase.multiply(localQuat);
+	});
+
+	// --- Camera Tracking on Distance Change ---
+	let lastPosition: number | undefined = undefined;
+	let lastIndex: number | undefined = undefined;
+	let lastToolPos: [number, number, number] | undefined = undefined;
+
+	$effect(() => {
+		const currentBend = bends[activeBendIndex];
+		const currentPosition = currentBend?.position;
+		const currentToolPos = toolPos;
+
+		// Perform a smooth manual camera shift natively via Three.js matching any newly slid distances exactly
+		if (
+			lastIndex === activeBendIndex &&
+			lastPosition !== undefined &&
+			currentPosition !== undefined &&
+			lastPosition !== currentPosition &&
+			lastToolPos !== undefined
+		) {
+			if (cameraRef && controlsRef) {
+				const dx = currentToolPos[0] - lastToolPos[0];
+				const dy = currentToolPos[1] - lastToolPos[1];
+				const dz = currentToolPos[2] - lastToolPos[2];
+
+				cameraRef.position.x += dx;
+				cameraRef.position.y += dy;
+				cameraRef.position.z += dz;
+
+				controlsRef.target.x += dx;
+				controlsRef.target.y += dy;
+				controlsRef.target.z += dz;
+
+				controlsRef.update();
+
+				cameraState.pos = [cameraRef.position.x, cameraRef.position.y, cameraRef.position.z];
+				cameraState.target = [controlsRef.target.x, controlsRef.target.y, controlsRef.target.z];
+			}
+		}
+
+		lastIndex = activeBendIndex;
+		lastPosition = currentPosition;
+		lastToolPos = currentToolPos;
 	});
 
 	// --- Exact Performance Calculation ---
@@ -205,8 +290,14 @@
 			ref.position.set(...cameraState.pos);
 			ref.lookAt(...cameraState.target);
 		}}
+		bind:ref={orthoCameraRef}
 	>
-		<OrbitControls target={cameraState.target} enabled={!isDragging} onchange={onCameraChange} />
+		<OrbitControls
+			target={cameraState.target}
+			enabled={!isDragging}
+			onchange={onCameraChange}
+			bind:ref={controlsRef}
+		/>
 	</T.OrthographicCamera>
 {:else}
 	<T.PerspectiveCamera
@@ -216,8 +307,14 @@
 			ref.position.set(...cameraState.pos);
 			ref.lookAt(...cameraState.target);
 		}}
+		bind:ref={perspCameraRef}
 	>
-		<OrbitControls target={cameraState.target} enabled={!isDragging} onchange={onCameraChange} />
+		<OrbitControls
+			target={cameraState.target}
+			enabled={!isDragging}
+			onchange={onCameraChange}
+			bind:ref={controlsRef}
+		/>
 	</T.PerspectiveCamera>
 {/if}
 
@@ -251,10 +348,40 @@
 	fadeDistance={250}
 />
 
-<T.Mesh>
-	<T.TubeGeometry bind:ref={tubeGeom} args={[curve, 100, pipeRadius, 12, false]} />
-	<T.MeshBasicMaterial color={textTexture ? '#ffffff' : '#999999'} map={textTexture || null} />
-</T.Mesh>
+<T.Group position={[0, pipeRadius, pipeRadius]}>
+	<T.Mesh>
+		<T.TubeGeometry bind:ref={tubeGeom} args={[curve, 100, pipeRadius, 12, false]} />
+		<T.MeshBasicMaterial color={textTexture ? '#ffffff' : '#999999'} map={textTexture || null} />
+	</T.Mesh>
+
+	<!-- Start Cap -->
+	<T.Group position={startPoint} quaternion={startQuaternion}>
+		<!-- Outer Material Ring -->
+		<T.Mesh>
+			<T.RingGeometry args={[innerRadius, pipeRadius, 12]} />
+			<T.MeshBasicMaterial color={textTexture ? '#ffffff' : '#999999'} map={textTexture || null} />
+		</T.Mesh>
+		<!-- Inner Black Hole -->
+		<T.Mesh>
+			<T.CircleGeometry args={[innerRadius, 12]} />
+			<T.MeshBasicMaterial color="#000000" />
+		</T.Mesh>
+	</T.Group>
+
+	<!-- End Cap -->
+	<T.Group position={endPoint} quaternion={endQuaternion}>
+		<!-- Outer Material Ring -->
+		<T.Mesh>
+			<T.RingGeometry args={[innerRadius, pipeRadius, 12]} />
+			<T.MeshBasicMaterial color={textTexture ? '#ffffff' : '#999999'} map={textTexture || null} />
+		</T.Mesh>
+		<!-- Inner Black Hole -->
+		<T.Mesh>
+			<T.CircleGeometry args={[innerRadius, 12]} />
+			<T.MeshBasicMaterial color="#000000" />
+		</T.Mesh>
+	</T.Group>
+</T.Group>
 
 <!-- Bender Tool Anchor mapped perfectly inside multiple sequential tracking coordinates -->
 {#if activeBendFrame}
