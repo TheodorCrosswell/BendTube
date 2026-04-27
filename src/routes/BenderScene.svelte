@@ -190,8 +190,8 @@
 			const mappedBends = bends
 				.map((b) => {
 					const angleDeg = Math.abs(b.angle);
-					// If negative drag applied, physically flip the pipe orientation
-					const rotDeg = (b.rotation + (b.angle < 0 ? 180 : 0)) % 360;
+					// Removed the artificial 180 flip here to prevent rotating downstream bends
+					const rotDeg = b.rotation % 360;
 					const angleRad = angleDeg * (Math.PI / 180);
 					const rotRad = rotDeg * (Math.PI / 180);
 					const arcLen = R * angleRad;
@@ -199,16 +199,9 @@
 					let L1: number;
 
 					if (b.mark === 'star') {
-						// Fixed physical offset from the front of the shoe to the "Star" mark.
-						// This value ensures the outer edge of a 90-degree bend equals b.position perfectly.
 						const starOffset = R * (Math.PI / 2) - R - pipeRadius;
-
-						// We keep - arcLen so the pipe properly draws into the bend curve as the angle increases,
-						// but we shift the entire bend location forward with starOffset.
 						L1 = b.position - arcLen + starOffset;
 					} else {
-						// For the 'arrow' mark, the bend starts dynamically in the forward direction.
-						// Taking deduction into account so a 90 degree bend precisely yields back of bend at b.position + deduction
 						L1 = b.position + deduction - R - pipeRadius;
 					}
 
@@ -246,22 +239,32 @@
 					.addScaledVector(right, Math.sin(bend.rotRad));
 
 				const binormal = new THREE.Vector3().crossVectors(dir, n).normalize();
-				const center = new THREE.Vector3().copy(pos).addScaledVector(n, bend.R);
+
+				// Make the relative rotation permanent against the transported frame to treat consecutive bends independently
+				up.copy(n);
+				right.copy(binormal);
+
+				// Compute geometric normal locally to correctly draw curves matching the negative drag direction
+				const isNegative = bend.originalBend.angle < 0;
+				const geoN = isNegative ? n.clone().multiplyScalar(-1) : n;
+				const geoBinormal = isNegative ? binormal.clone().multiplyScalar(-1) : binormal;
+
+				const center = new THREE.Vector3().copy(pos).addScaledVector(geoN, bend.R);
 
 				const frame: BendFrame = {
 					bend,
 					L1: bend.L1,
 					pos: pos.clone(),
 					dir: dir.clone(),
-					n: n.clone(),
-					binormal: binormal.clone(),
+					n: geoN.clone(),
+					binormal: geoBinormal.clone(),
 					center: center.clone(),
 					posPast: new THREE.Vector3(),
 					dirPast: new THREE.Vector3()
 				};
 
 				const theta = bend.angleRad;
-				const v = new THREE.Vector3().copy(n).multiplyScalar(-1);
+				const v = new THREE.Vector3().copy(geoN).multiplyScalar(-1);
 
 				pos
 					.copy(center)
@@ -272,11 +275,11 @@
 				const newDir = new THREE.Vector3()
 					.copy(dir)
 					.multiplyScalar(Math.cos(theta))
-					.addScaledVector(n, Math.sin(theta));
+					.addScaledVector(geoN, Math.sin(theta));
 
 				dir.copy(newDir).normalize();
-				up.applyAxisAngle(binormal, theta);
-				right.applyAxisAngle(binormal, theta);
+				up.applyAxisAngle(geoBinormal, theta);
+				right.applyAxisAngle(geoBinormal, theta);
 
 				frame.posPast.copy(pos);
 				frame.dirPast.copy(dir);
