@@ -41,7 +41,8 @@
 		total: 0,
 		width: 0,
 		height: 0,
-		depth: 0
+		depth: 0,
+		totalDegrees: 0
 	});
 
 	const quickAngles = [10, 22.5, 30, 45, 60, 90];
@@ -62,6 +63,13 @@
 		'5': 24,
 		'6': 30
 	};
+
+	function getDegreeColor(deg: number) {
+		if (deg > 360) return '#ff4d4d'; // Red
+		if (deg > 270) return '#ffa500'; // Orange
+		if (deg > 180) return '#ffd700'; // Yellow
+		return '#4caf50'; // Green
+	}
 </script>
 
 <div class="simulator-container">
@@ -274,6 +282,19 @@
 			<div class="stat-row"><span>Width (X):</span> <span>{stats.width.toFixed(2)}"</span></div>
 			<div class="stat-row"><span>Height (Y):</span> <span>{stats.height.toFixed(2)}"</span></div>
 			<div class="stat-row"><span>Depth (Z):</span> <span>{stats.depth.toFixed(2)}"</span></div>
+		</div>
+
+		<div class="stat-section">
+			<h4>Run Constraints</h4>
+			<div class="stat-row" style="color: {getDegreeColor(stats.totalDegrees)}; font-weight: 600;">
+				<span>Total Degrees:</span> 
+				<span>
+					{Math.round(stats.totalDegrees)}&deg;
+					{#if stats.totalDegrees > 360}
+						<span class="warning-icon" title="Exceeds standard 360° limit between pull points">⚠️</span>
+					{/if}
+				</span>
+			</div>
 		</div>
 	</div>
 
@@ -612,6 +633,10 @@
 		border-top: 1px dashed #555;
 		font-weight: bold;
 		color: #fff;
+	}
+	.warning-icon {
+		margin-left: 0.25rem;
+		cursor: help;
 	}
 
 	@media (max-width: 768px) {

@@ -50,6 +50,7 @@
 			width: number;
 			height: number;
 			depth: number;
+			totalDegrees: number;
 		};
 	}
 
@@ -68,7 +69,8 @@
 			total: 0,
 			width: 0,
 			height: 0,
-			depth: 0
+			depth: 0,
+			totalDegrees: 0
 		})
 	}: Props = $props();
 
@@ -379,8 +381,10 @@
 		if (box) box.getSize(size);
 
 		let lenBend = 0;
+		let totalDeg = 0;
 		for (const frame of curve.bendFrames) {
 			lenBend += frame.bend.arcLen;
+			totalDeg += frame.bend.angleDeg;
 		}
 
 		const sortedFrames = [...curve.bendFrames].sort((a, b) => a.L1 - b.L1);
@@ -400,7 +404,8 @@
 			total: beforeBend + lenBend + afterBend,
 			width: size.x,
 			height: size.y,
-			depth: size.z
+			depth: size.z,
+			totalDegrees: totalDeg
 		};
 	});
 </script>
