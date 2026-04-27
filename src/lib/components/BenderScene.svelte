@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { T } from '@threlte/core';
-	import { OrbitControls, Grid, interactivity } from '@threlte/extras';
+	import { OrbitControls, Grid, interactivity, HTML } from '@threlte/extras';
 	import * as THREE from 'three';
 
 	import type { BenderSceneProps } from '$lib/types/bender';
@@ -53,6 +53,31 @@
 
 	// --- Dynamic Math: Sequential Frenet Frame Conduit Path ---
 	let curve = $derived(new ConduitCurve(bends, bendRadius, pipeRadius, deduction));
+
+	// --- Precise Visual Marks for Bends ---
+	let marks = $derived.by(() => {
+		return bends.map((bend, index) => {
+			const t = bend.position / curve.totalLen;
+			const pos = curve.getPoint(t);
+
+			// Step slightly forward to get an accurate localized tangent for precise ring rotations
+			const pos2 = curve.getPoint(t + 0.001);
+			const tangent = new THREE.Vector3().subVectors(pos2, pos).normalize();
+
+			if (tangent.lengthSq() === 0) {
+				tangent.set(1, 0, 0);
+			}
+
+			// Cylinder geometry naturally aligns with the Y axis, so we project it alongside the tangent vector
+			const quat = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), tangent);
+
+			return {
+				index,
+				pos: pos.toArray() as [number, number, number],
+				quat: quat.toArray() as [number, number, number, number]
+			};
+		});
+	});
 
 	let conduitData = $derived(
 		// eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -353,6 +378,26 @@
 		<T.TubeGeometry bind:ref={tubeGeom} args={[curve, 100, pipeRadius, 12, false]} />
 		<T.MeshBasicMaterial color={textTexture ? '#ffffff' : '#999999'} map={textTexture || null} />
 	</T.Mesh>
+
+	<!-- Bend Marks -->
+	{#each marks as mark (mark.index)}
+		<T.Group position={mark.pos} quaternion={mark.quat}>
+			<!-- 1/8" thick physical Sharpie ring sliding slightly hovering the conduit to avoid z-fighting -->
+			<T.Mesh>
+				<T.CylinderGeometry args={[pipeRadius + 0.02, pipeRadius + 0.02, 0.125, 32]} />
+				<T.MeshBasicMaterial color="#111111" />
+			</T.Mesh>
+
+			<!-- Floating Indicator Label -->
+			<HTML center>
+				<div
+					style="background: rgba(0,0,0,0.8); color: white; padding: 4px 8px; border-radius: 4px; font-family: sans-serif; font-size: 12px; font-weight: bold; pointer-events: none; margin-top: -40px; white-space: nowrap; user-select: none;"
+				>
+					Bend {mark.index + 1}
+				</div>
+			</HTML>
+		</T.Group>
+	{/each}
 
 	<!-- Start Cap -->
 	<T.Group position={startPoint} quaternion={startQuaternion}>
