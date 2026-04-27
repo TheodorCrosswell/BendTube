@@ -46,6 +46,22 @@
 
 	const quickAngles = [10, 22.5, 30, 45, 60, 90];
 	const quickRotations = [0, 90, 180, 270];
+
+	// Standard typical bender shoe Centerline Radii (CLR) to calculate exact bend length
+	const standardRadii: Record<string, number> = {
+		'1/2': 4,
+		'3/4': 4.5,
+		'1': 5.75,
+		'1 1/4': 7.25,
+		'1 1/2': 8.25,
+		'2': 9.5,
+		'2 1/2': 10.5,
+		'3': 13,
+		'3 1/2': 15,
+		'4': 16,
+		'5': 24,
+		'6': 30
+	};
 </script>
 
 <div class="simulator-container">
@@ -86,7 +102,22 @@
 			<div class="bend-actions-row">
 				<button
 					onclick={() => {
-						bends.push({ angle: 0, rotation: 0, position: 60, mark: 'star' });
+						// Grab the last bend to calculate continuity
+						const prevBend = bends[bends.length - 1];
+						
+						// Safely retrieve radius from JSON, or fall back to standard bender values
+						const conduit = currentConduit as any;
+						const clr = conduit.radius ?? conduit.min_radius ?? standardRadii[selectedSize] ?? 4;
+						
+						// Arc length = radius * angle (in radians)
+						const arcLength = clr * Math.abs(prevBend.angle) * (Math.PI / 180);
+
+						bends.push({
+							angle: 0,
+							rotation: 0,
+							position: Number((prevBend.position + arcLength).toFixed(2)),
+							mark: prevBend.mark
+						});
 						activeBendIndex = bends.length - 1;
 					}}
 				>
