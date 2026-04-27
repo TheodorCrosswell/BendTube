@@ -77,6 +77,42 @@
 		}
 	};
 
+	// --- Camera State Tracking ---
+	// Encapsulated in a plain constant object to bypass Svelte 5 state reactivity.
+	// This prevents jittering/feedback loops during orbit while properly
+	// initializing values whenever the camera components are toggled/created.
+	const cameraState = {
+		pos: [60, 10, 100] as [number, number, number],
+		target: [60, 5, 0] as [number, number, number],
+		zoom: 10
+	};
+
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	const onCameraChange = (e: any) => {
+		const controls = e.target;
+		if (!controls) return;
+
+		cameraState.pos = [
+			controls.object.position.x,
+			controls.object.position.y,
+			controls.object.position.z
+		];
+		cameraState.target = [controls.target.x, controls.target.y, controls.target.z];
+
+		// Map zoom properties so the visual scale carries over appropriately
+		if (controls.object.isOrthographicCamera) {
+			cameraState.zoom = controls.object.zoom;
+		} else {
+			// Approximate perspective visual distance size to an equivalent orthographic zoom
+			const distance = Math.hypot(
+				cameraState.pos[0] - cameraState.target[0],
+				cameraState.pos[1] - cameraState.target[1],
+				cameraState.pos[2] - cameraState.target[2]
+			);
+			cameraState.zoom = 1000 / (distance || 1);
+		}
+	};
+
 	// --- Dynamic Math: Sequential Frenet Frame Conduit Path ---
 	let curve = $derived(new ConduitCurve(bends, bendRadius, pipeRadius, deduction));
 
@@ -162,12 +198,26 @@
 <svelte:window onpointermove={onPointerMove} onpointerup={onPointerUp} />
 
 {#if isOrthographic}
-	<T.OrthographicCamera makeDefault position={[60, 10, 100]} zoom={10}>
-		<OrbitControls target={[60, 5, 0]} enabled={!isDragging} />
+	<T.OrthographicCamera
+		makeDefault
+		zoom={cameraState.zoom}
+		oncreate={(ref) => {
+			ref.position.set(...cameraState.pos);
+			ref.lookAt(...cameraState.target);
+		}}
+	>
+		<OrbitControls target={cameraState.target} enabled={!isDragging} onchange={onCameraChange} />
 	</T.OrthographicCamera>
 {:else}
-	<T.PerspectiveCamera makeDefault position={[60, 10, 100]} fov={45}>
-		<OrbitControls target={[60, 5, 0]} enabled={!isDragging} />
+	<T.PerspectiveCamera
+		makeDefault
+		fov={45}
+		oncreate={(ref) => {
+			ref.position.set(...cameraState.pos);
+			ref.lookAt(...cameraState.target);
+		}}
+	>
+		<OrbitControls target={cameraState.target} enabled={!isDragging} onchange={onCameraChange} />
 	</T.PerspectiveCamera>
 {/if}
 
