@@ -41,6 +41,7 @@
 		outerDiameter?: number;
 		conduitSize?: string;
 		conduitType?: string;
+		bendMark?: 'star' | 'arrow';
 		stats?: {
 			beforeBend: number;
 			inBend: number;
@@ -59,6 +60,7 @@
 		outerDiameter = 0.706,
 		conduitSize = '1/2',
 		conduitType = 'EMT',
+		bendMark = 'star',
 		// eslint-disable-next-line no-useless-assignment
 		stats = $bindable({
 			beforeBend: 0,
@@ -78,6 +80,24 @@
 	let pipeRadius = $derived(outerDiameter / 2);
 	let bendRadius = $derived(pipeRadius * 10);
 	let toolScaleFactor = $derived(bendRadius / 4);
+
+	// Calculate bender deduction accurately based on selected conduit size
+	let deduction = $derived.by(() => {
+		switch (conduitSize) {
+			case '1/2':
+				return 5;
+			case '3/4':
+				return 6;
+			case '1':
+				return 8;
+			case '1 1/4':
+				return 11;
+			case '1 1/2':
+				return 14;
+			default:
+				return 5;
+		}
+	});
 
 	// --- Dynamic Canvas Texture for Conduit Text ---
 	let textTexture = $derived.by(() => {
@@ -139,7 +159,10 @@
 		if (!isDragging || !bends[activeBendIndex]) return;
 		const deltaX = e.clientX - startX;
 		const deltaY = e.clientY - startY;
-		const movement = deltaX + deltaY;
+
+		// Adjust drag direction to feel intuitive depending on the bender alignment
+		const movement = bendMark === 'arrow' ? -deltaX + deltaY : deltaX + deltaY;
+
 		let newAngle = startAngle + movement * 0.4;
 		bends[activeBendIndex].angle = Math.max(-110, Math.min(newAngle, 110));
 	};
@@ -156,7 +179,14 @@
 		bendFrames: BendFrame[] = [];
 		totalLen: number;
 
-		constructor(bends: BendState[], R: number, pipeRadius: number, totalLen: number = 120) {
+		constructor(
+			bends: BendState[],
+			R: number,
+			pipeRadius: number,
+			bendMark: 'star' | 'arrow' = 'star',
+			deduction: number = 5,
+			totalLen: number = 120
+		) {
 			super();
 			// Map physical constraints and sort multiple bends by distance sequentially
 			const mappedBends = bends
@@ -168,13 +198,21 @@
 					const rotRad = rotDeg * (Math.PI / 180);
 					const arcLen = R * angleRad;
 
-					// Fixed physical offset from the front of the shoe to the "Star" mark.
-					// This value ensures the outer edge of a 90-degree bend equals b.position perfectly.
-					const starOffset = R * (Math.PI / 2) - R - pipeRadius;
+					let L1: number;
 
-					// We keep - arcLen so the pipe properly draws into the bend curve as the angle increases,
-					// but we shift the entire bend location forward with starOffset.
-					const L1 = b.position - arcLen + starOffset;
+					if (bendMark === 'star') {
+						// Fixed physical offset from the front of the shoe to the "Star" mark.
+						// This value ensures the outer edge of a 90-degree bend equals b.position perfectly.
+						const starOffset = R * (Math.PI / 2) - R - pipeRadius;
+
+						// We keep - arcLen so the pipe properly draws into the bend curve as the angle increases,
+						// but we shift the entire bend location forward with starOffset.
+						L1 = b.position - arcLen + starOffset;
+					} else {
+						// For the 'arrow' mark, the bend starts dynamically in the forward direction.
+						// Taking deduction into account so a 90 degree bend precisely yields back of bend at b.position + deduction
+						L1 = b.position + deduction - R - pipeRadius;
+					}
 
 					return {
 						angleDeg,
@@ -288,7 +326,7 @@
 		}
 	}
 
-	let curve = $derived(new ConduitCurve(bends, bendRadius, pipeRadius));
+	let curve = $derived(new ConduitCurve(bends, bendRadius, pipeRadius, bendMark, deduction));
 
 	// Calculate and align mathematical frame tracking properties to global geometry
 	let activeBendFrame = $derived.by(() => {
@@ -316,9 +354,17 @@
 				activeBendFrame.binormal
 			)
 		);
-		const localQuat = new THREE.Quaternion().setFromEuler(
-			new THREE.Euler(0, Math.PI, -activeBendFrame.bend.angleRad, 'XYZ')
-		);
+
+		let localEuler: THREE.Euler;
+		if (bendMark === 'star') {
+			// Star mark: tool faces backward, handle visually maps negative angle
+			localEuler = new THREE.Euler(0, Math.PI, -activeBendFrame.bend.angleRad, 'XYZ');
+		} else {
+			// Arrow mark: tool aligns straight tracking forward, anchored entirely at the start of the curve
+			localEuler = new THREE.Euler(0, 0, 0, 'XYZ');
+		}
+
+		const localQuat = new THREE.Quaternion().setFromEuler(localEuler);
 		return qBase.multiply(localQuat);
 	});
 

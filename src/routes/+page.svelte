@@ -22,6 +22,7 @@
 	let sizesForType = $derived(standards[selectedType]);
 	let availableSizes = $derived(sizesForType.map((s) => s.trade_size));
 	let selectedSize = $state('1/2');
+	let bendMark = $state<'star' | 'arrow'>('star');
 
 	$effect(() => {
 		if (!availableSizes.includes(selectedSize)) {
@@ -126,6 +127,19 @@
 						{size}"
 					</button>
 				{/each}
+			</div>
+		</div>
+
+		<!-- Bend Mark Selection -->
+		<div class="selector-group">
+			<h4>Bend Mark</h4>
+			<div class="button-row">
+				<button class:active={bendMark === 'star'} onclick={() => (bendMark = 'star')}>
+					Star Mark
+				</button>
+				<button class:active={bendMark === 'arrow'} onclick={() => (bendMark = 'arrow')}>
+					Arrow Mark
+				</button>
 			</div>
 		</div>
 
@@ -236,6 +250,7 @@
 				{outerDiameter}
 				conduitSize={selectedSize}
 				conduitType={selectedType}
+				{bendMark}
 				bind:stats
 			/>
 		</Canvas>
