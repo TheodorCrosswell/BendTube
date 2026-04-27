@@ -84,14 +84,14 @@
 		if (typeof document === 'undefined') return undefined;
 
 		const canvas = document.createElement('canvas');
-		const ctx = canvas.getContext('2d');
-		if (!ctx) return undefined;
+		const canvasCtx = canvas.getContext('2d');
+		if (!canvasCtx) return undefined;
 
 		const text = `${conduitSize}" ${conduitType} Conduit ----- `;
 		const fontSize = 40;
 
-		ctx.font = `bold ${fontSize}px sans-serif`;
-		const textWidth = Math.ceil(ctx.measureText(text).width);
+		canvasCtx.font = `bold ${fontSize}px sans-serif`;
+		const textWidth = Math.ceil(canvasCtx.measureText(text).width);
 
 		canvas.width = textWidth;
 		canvas.height = 256;
@@ -156,7 +156,7 @@
 		bendFrames: BendFrame[] = [];
 		totalLen: number;
 
-		constructor(bends: BendState[], R: number, totalLen: number = 120) {
+		constructor(bends: BendState[], R: number, pipeRadius: number, totalLen: number = 120) {
 			super();
 			// Map physical constraints and sort multiple bends by distance sequentially
 			const mappedBends = bends
@@ -167,7 +167,15 @@
 					const angleRad = angleDeg * (Math.PI / 180);
 					const rotRad = rotDeg * (Math.PI / 180);
 					const arcLen = R * angleRad;
-					const L1 = b.position - arcLen;
+
+					// Fixed physical offset from the front of the shoe to the "Star" mark.
+					// This value ensures the outer edge of a 90-degree bend equals b.position perfectly.
+					const starOffset = R * (Math.PI / 2) - R - pipeRadius;
+
+					// We keep - arcLen so the pipe properly draws into the bend curve as the angle increases,
+					// but we shift the entire bend location forward with starOffset.
+					const L1 = b.position - arcLen + starOffset;
+
 					return {
 						angleDeg,
 						rotDeg,
@@ -280,7 +288,7 @@
 		}
 	}
 
-	let curve = $derived(new ConduitCurve(bends, bendRadius));
+	let curve = $derived(new ConduitCurve(bends, bendRadius, pipeRadius));
 
 	// Calculate and align mathematical frame tracking properties to global geometry
 	let activeBendFrame = $derived.by(() => {
