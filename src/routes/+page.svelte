@@ -276,7 +276,10 @@
 						{#if activeAttribute === 'position'}
 							<button onclick={() => addPosition(12)}>+12"</button>
 							<button onclick={() => addPosition(1)}>+1"</button>
+							<button onclick={() => addPosition(-12)}>-12"</button>
+							<button onclick={() => addPosition(-1)}>-1"</button>
 							<button onclick={() => addPosition(0.125)}>+1/8"</button>
+							<button onclick={() => addPosition(-0.125)}>-1/8"</button>
 						{:else if activeAttribute === 'angle'}
 							{#each [0, 10, 22.5, 30, 45, 60, 90] as ang}
 								<button class:active={bends[activeBendIndex].angle === ang} onclick={() => setAngle(ang)}>{ang}&deg;</button>
