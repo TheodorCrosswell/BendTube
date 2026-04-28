@@ -80,7 +80,7 @@
 		});
 	});
 
-	// --- Kick Measurement Overlay Logic ---
+	// --- Kick & Length Measurement Overlay Logic ---
 	function createCylinderLine(p1: [number, number, number], p2: [number, number, number]) {
 		const vA = new THREE.Vector3(...p1);
 		const vB = new THREE.Vector3(...p2);
@@ -176,6 +176,83 @@
 						.add(heightVec.clone().multiplyScalar(0.5))
 						.toArray() as [number, number, number],
 					height: height
+				});
+			}
+		}
+
+		return measurements;
+	});
+
+	// --- Straight Section Measurements ---
+	let straightMeasurements = $derived.by(() => {
+		const measurements = [];
+		const sortedFrames = [...curve.bendFrames].sort((a, b) => a.L1 - b.L1);
+		const validFrames = sortedFrames.filter((f) => Math.abs(f.bend.angleRad) >= 0.01);
+		
+		const numSections = validFrames.length + 1;
+
+		for (let i = 0; i < numSections; i++) {
+			let pStart_center: THREE.Vector3;
+			let pEnd_center: THREE.Vector3;
+			let dir: THREE.Vector3;
+			let binormal: THREE.Vector3;
+
+			// Determine mathematical starting edge of this straight section
+			if (i === 0) {
+				pStart_center = curve.getPoint(0);
+				if (validFrames.length > 0) {
+					dir = validFrames[0].dir.clone().normalize();
+					binormal = validFrames[0].binormal.clone().normalize();
+				} else {
+					dir = new THREE.Vector3(1, 0, 0);
+					binormal = new THREE.Vector3(0, 0, 1);
+				}
+			} else {
+				const prevFrame = validFrames[i - 1];
+				const tPhysicalStart = (prevFrame.L1 + prevFrame.bend.arcLen) / curve.totalLen;
+				const pPhysicalStart = curve.getPoint(tPhysicalStart);
+				
+				binormal = prevFrame.binormal.clone().normalize();
+				dir = prevFrame.dir.clone().applyAxisAngle(binormal, prevFrame.bend.angleRad).normalize();
+				
+				// Extend the start line backwards to reach the "back of the bend" intersection point
+				const distToPrevVertex = bendRadius * Math.tan(Math.abs(prevFrame.bend.angleRad) / 2);
+				pStart_center = pPhysicalStart.clone().sub(dir.clone().multiplyScalar(distToPrevVertex));
+			}
+
+			// Determine mathematical ending edge of this straight section
+			if (i === validFrames.length) {
+				pEnd_center = curve.getPoint(1);
+			} else {
+				const nextFrame = validFrames[i];
+				const tPhysicalEnd = nextFrame.L1 / curve.totalLen;
+				const pPhysicalEnd = curve.getPoint(tPhysicalEnd);
+				
+				// Extend the end line forwards to reach the "back of the bend" intersection point
+				const distToNextVertex = bendRadius * Math.tan(Math.abs(nextFrame.bend.angleRad) / 2);
+				pEnd_center = pPhysicalEnd.clone().add(dir.clone().multiplyScalar(distToNextVertex));
+			}
+
+			// Calculate straight back-to-back length
+			const segmentVector = pEnd_center.clone().sub(pStart_center);
+			const length = segmentVector.dot(dir);
+
+			if (length >= 0.1) {
+				// Offset by 6 inches sideways along the binormal vector to avoid colliding with Kicks
+				const visualOffset = binormal.clone().multiplyScalar(6); 
+				
+				const v_pStart = pStart_center.clone().add(visualOffset);
+				const v_pEnd = pEnd_center.clone().add(visualOffset);
+
+				measurements.push({
+					id: `straight-len-${i}`,
+					lines: [
+						createCylinderLine(v_pStart.toArray() as [number, number, number], v_pEnd.toArray() as [number, number, number]),
+						createCylinderLine(pStart_center.toArray() as [number, number, number], v_pStart.toArray() as [number, number, number]),
+						createCylinderLine(pEnd_center.toArray() as [number, number, number], v_pEnd.toArray() as [number, number, number])
+					],
+					labelPos: v_pStart.clone().lerp(v_pEnd, 0.5).toArray() as [number, number, number],
+					length: length
 				});
 			}
 		}
@@ -542,6 +619,24 @@
 				style="background: rgba(0, 0, 0, 0.8); color: #1e90ff; padding: 4px 8px; border-radius: 4px; font-family: monospace; font-size: 14px; font-weight: bold; pointer-events: none; border: 1px solid #1e90ff; white-space: nowrap; user-select: none; margin-left: 10px;"
 			>
 				Kick: {measurement.height.toFixed(2)}"
+			</div>
+		</HTML>
+	{/each}
+
+	<!-- Straight Section Back-to-Back Measurement Overlays -->
+	{#each straightMeasurements as measurement (measurement.id)}
+		{#each measurement.lines as lineProps}
+			<T.Mesh position={lineProps.position} quaternion={lineProps.quaternion}>
+				<T.CylinderGeometry args={[0.04, 0.04, lineProps.length, 8]} />
+				<T.MeshBasicMaterial color="#32cd32" />
+			</T.Mesh>
+		{/each}
+
+		<HTML position={measurement.labelPos} center>
+			<div
+				style="background: rgba(0, 0, 0, 0.8); color: #32cd32; padding: 4px 8px; border-radius: 4px; font-family: monospace; font-size: 14px; font-weight: bold; pointer-events: none; border: 1px solid #32cd32; white-space: nowrap; user-select: none; margin-bottom: 20px;"
+			>
+				Length: {measurement.length.toFixed(2)}"
 			</div>
 		</HTML>
 	{/each}
