@@ -16,6 +16,16 @@
 	type MenuType = 'conduit' | 'bending' | 'stats' | null;
 	let activeMenu = $state<MenuType>(null);
 	
+	// Track rendered menu to keep content alive during the close animation
+	let renderedMenu = $state<MenuType>(null);
+	let menuHeight = $state(0);
+
+	$effect(() => {
+		if (activeMenu !== null) {
+			renderedMenu = activeMenu;
+		}
+	});
+	
 	// Active attribute for the single slider 
 	type BendAttribute = 'position' | 'angle' | 'rotation';
 	let activeAttribute = $state<BendAttribute>('position');
@@ -133,8 +143,8 @@
 </script>
 
 <div class="app-layout">
-	<!-- Top: 3D Canvas Area (Flexes to fill remaining space) -->
-	<div class="canvas-wrapper" style="bottom: {activeMenu ? '55vh' : '0'}">
+	<!-- Top: 3D Canvas Area (Flexes to fill remaining space dynamically) -->
+	<div class="canvas-wrapper" style="bottom: {activeMenu ? menuHeight + 'px' : '0'}">
 		<!-- Global View Toggle Floating Top Left -->
 		<button class="view-toggle" onclick={() => (isOrthographic = !isOrthographic)}>
 			{isOrthographic ? 'Orthographic' : 'Perspective'}
@@ -156,7 +166,7 @@
 	</div>
 
 	<!-- Floating Navigation Buttons (Bottom Right) -->
-	<div class="floating-nav" style="bottom: {activeMenu ? 'calc(55vh + 15px)' : '25px'}">
+	<div class="floating-nav" style="bottom: {activeMenu ? `${menuHeight + 15}px` : '25px'}">
 		<button class="fab" class:active={activeMenu === 'conduit'} onclick={() => activeMenu = activeMenu === 'conduit' ? null : 'conduit'}>
 			<span class="icon">🏗️</span>
 			<span class="label">Conduit</span>
@@ -172,8 +182,8 @@
 	</div>
 
 	<!-- Bottom Menu Sheet -->
-	<div class="bottom-sheet" class:open={activeMenu !== null}>
-		{#if activeMenu === 'conduit'}
+	<div class="bottom-sheet" class:open={activeMenu !== null} bind:clientHeight={menuHeight}>
+		{#if renderedMenu === 'conduit'}
 			<div class="menu-content">
 				<h3>Conduit Setup</h3>
 				<div class="selector-group">
@@ -194,7 +204,7 @@
 				</div>
 			</div>
 		
-		{:else if activeMenu === 'bending'}
+		{:else if renderedMenu === 'bending'}
 			<div class="menu-content">
 				<!-- Sequence & Mark Row -->
 				<div class="bend-header-row">
@@ -282,7 +292,7 @@
 				</div>
 			</div>
 
-		{:else if activeMenu === 'stats'}
+		{:else if renderedMenu === 'stats'}
 			<div class="menu-content stats-content">
 				<h3>3D Geometry Analysis</h3>
 
@@ -407,7 +417,8 @@
 	.bottom-sheet {
 		position: absolute;
 		bottom: 0; left: 0; right: 0;
-		height: 55vh;
+		height: auto;
+		max-height: 85vh; /* Failsafe scroll if screen is extremely small */
 		background: #1e1e1e;
 		border-top-left-radius: 24px;
 		border-top-right-radius: 24px;
@@ -632,9 +643,6 @@
 	}
 
 	@media (min-width: 768px) {
-		.bottom-sheet { height: 40vh; }
-		.canvas-wrapper { bottom: 40vh !important; }
-		.floating-nav { bottom: calc(40vh + 15px) !important; }
 		.quick-select button { flex-basis: calc(12.5% - 6px); }
 		.menu-content { padding: 20px 40px; }
 	}
