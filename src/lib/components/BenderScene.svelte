@@ -1,3 +1,4 @@
+<!-- src/lib/components/BenderScene.svelte -->
 <script lang="ts">
 	import { T } from '@threlte/core';
 	import { OrbitControls, Grid, interactivity, HTML } from '@threlte/extras';
@@ -144,6 +145,28 @@
 		if (isDragging) {
 			isDragging = false;
 			document.body.style.cursor = 'default';
+		}
+	};
+
+	// --- Click to add a bend logic ---
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	const onConduitClick = (e: any) => {
+		e.stopPropagation();
+		// Ensure we don't accidentally create a bend while ending a camera pan/drag
+		if (e.uv && !isDragging) {
+			const t = e.uv.x;
+			// Convert fractional 0-1 mapped length representation to real inches
+			const newPosition = Number((t * curve.totalLen).toFixed(2));
+			
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			const newBend: any = { angle: 0, rotation: 0, position: newPosition, mark: 'star' };
+			
+			// Append and sort to maintain chronological run order
+			const newBends = [...bends, newBend].sort((a, b) => a.position - b.position);
+			
+			bends = newBends;
+			// Automatically select the newly created bend
+			activeBendIndex = newBends.indexOf(newBend);
 		}
 	};
 
@@ -374,7 +397,7 @@
 />
 
 <T.Group position={[0, pipeRadius, pipeRadius]}>
-	<T.Mesh>
+	<T.Mesh onclick={onConduitClick}>
 		<T.TubeGeometry bind:ref={tubeGeom} args={[curve, 100, pipeRadius, 12, false]} />
 		<T.MeshBasicMaterial color={textTexture ? '#ffffff' : '#999999'} map={textTexture || null} />
 	</T.Mesh>
@@ -390,8 +413,11 @@
 
 			<!-- Floating Indicator Label -->
 			<HTML center>
+				<!-- svelte-ignore a11y_click_events_have_key_events -->
+				<!-- svelte-ignore a11y_no_static_element_interactions -->
 				<div
-					style="background: rgba(0,0,0,0.8); color: white; padding: 4px 8px; border-radius: 4px; font-family: sans-serif; font-size: 12px; font-weight: bold; pointer-events: none; margin-top: -40px; white-space: nowrap; user-select: none;"
+					onclick={(e) => { e.stopPropagation(); activeBendIndex = mark.index; }}
+					style="background: {activeBendIndex === mark.index ? '#1e90ff' : 'rgba(0,0,0,0.8)'}; color: white; padding: 4px 8px; border-radius: 4px; font-family: sans-serif; font-size: 12px; font-weight: bold; pointer-events: auto; cursor: pointer; margin-top: -40px; white-space: nowrap; user-select: none; transition: background 0.2s;"
 				>
 					Bend {mark.index + 1}
 				</div>
