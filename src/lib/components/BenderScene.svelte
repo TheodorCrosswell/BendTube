@@ -80,6 +80,109 @@
 		});
 	});
 
+	// --- Kick Measurement Overlay Logic ---
+	function createCylinderLine(p1: [number, number, number], p2: [number, number, number]) {
+		const vA = new THREE.Vector3(...p1);
+		const vB = new THREE.Vector3(...p2);
+		const distance = vA.distanceTo(vB);
+		const midPoint = vA.clone().lerp(vB, 0.5).toArray();
+		const direction = vB.clone().sub(vA).normalize();
+		
+		// Fallback for zero distance
+		if (distance < 0.001) direction.set(0, 1, 0);
+		
+		const quaternion = new THREE.Quaternion()
+			.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction)
+			.toArray();
+
+		return { position: midPoint, quaternion, length: distance };
+	}
+
+	let kickMeasurements = $derived.by(() => {
+		const measurements = [];
+		// Sort frames to ensure chronological measurements from start to finish
+		const sortedFrames = [...curve.bendFrames].sort((a, b) => a.L1 - b.L1);
+
+		for (let i = 0; i < sortedFrames.length; i++) {
+			const frame = sortedFrames[i];
+			// Ignore completely straight segments
+			if (Math.abs(frame.bend.angleRad) < 0.01) continue;
+
+			const dir0 = frame.dir.clone().normalize();
+			const n0 = frame.n.clone().normalize();
+			const binormal = frame.binormal.clone().normalize();
+			const angleRad = frame.bend.angleRad;
+			
+			// Compute normals and forward direction for the newly generated straight section
+			const n1 = n0.clone().applyAxisAngle(binormal, angleRad).normalize();
+			const dir1 = dir0.clone().applyAxisAngle(binormal, angleRad).normalize();
+
+			// Anchor the beginning of the measurement frame to the exact start of the current bend
+			const tStart = frame.L1 / curve.totalLen;
+			const p0_center = curve.getPoint(tStart);
+
+			// Find the end of the straight section following the bend (either the next *actual* bend or the tube end)
+			let nextFrame = undefined;
+			for (let j = i + 1; j < sortedFrames.length; j++) {
+				if (Math.abs(sortedFrames[j].bend.angleRad) >= 0.01) {
+					nextFrame = sortedFrames[j];
+					break;
+				}
+			}
+			
+			let p1_center;
+			if (nextFrame) {
+				const tEndNext = nextFrame.L1 / curve.totalLen;
+				const pStartNext = curve.getPoint(tEndNext);
+				
+				// Extend the measurement point forward to the centerline intersection vertex of the next bend
+				// This ensures we measure to the physical outer edge ("back") of the next bend
+				const distToVertex = bendRadius * Math.tan(Math.abs(nextFrame.bend.angleRad) / 2);
+				p1_center = pStartNext.clone().add(dir1.clone().multiplyScalar(distToVertex));
+			} else {
+				p1_center = curve.getPoint(1);
+			}
+
+			// Compute the exact outer conduit edges for both segments (pushing outwards in reverse normal direction)
+			const p0_outer = p0_center.clone().add(n0.clone().multiplyScalar(-pipeRadius));
+			const p1_outer = p1_center.clone().add(n1.clone().multiplyScalar(-pipeRadius));
+
+			// Find where the end point projects directly down onto the initial segment's extended baseline
+			const diff = p1_outer.clone().sub(p0_outer);
+			const projectionDistance = diff.dot(dir0);
+			const pProj = p0_outer.clone().add(dir0.clone().multiplyScalar(projectionDistance));
+
+			// Push the entire dimension line drawing outwards visually so it doesn't clip the 3D conduit
+			const visualOffset = n0.clone().multiplyScalar(-4); // 4 inches away from outer edge
+
+			const v_p0 = p0_outer.clone().add(visualOffset);
+			const v_pProj = pProj.clone().add(visualOffset);
+			const heightVec = p1_outer.clone().sub(pProj);
+			const v_p1_shifted = v_pProj.clone().add(heightVec);
+
+			const height = heightVec.length();
+
+			if (height >= 0.1) {
+				measurements.push({
+					id: `bend-kick-${i}`,
+					lines: [
+						createCylinderLine(v_p0.toArray(), v_pProj.toArray()), // Baseline
+						createCylinderLine(v_pProj.toArray(), v_p1_shifted.toArray()), // Height line
+						createCylinderLine(p0_outer.toArray(), v_p0.toArray()), // Extension Line 1
+						createCylinderLine(p1_outer.toArray(), v_p1_shifted.toArray()) // Extension Line 2
+					],
+					labelPos: v_pProj
+						.clone()
+						.add(heightVec.clone().multiplyScalar(0.5))
+						.toArray() as [number, number, number],
+					height: height
+				});
+			}
+		}
+
+		return measurements;
+	});
+
 	let conduitData = $derived(
 		// eslint-disable-next-line @typescript-eslint/no-explicit-any
 		(conduitSizes.conduit_standards as any)[conduitType]?.find(
@@ -423,6 +526,24 @@
 				</div>
 			</HTML>
 		</T.Group>
+	{/each}
+
+	<!-- Kick Measurement Overlays -->
+	{#each kickMeasurements as measurement (measurement.id)}
+		{#each measurement.lines as lineProps}
+			<T.Mesh position={lineProps.position} quaternion={lineProps.quaternion}>
+				<T.CylinderGeometry args={[0.04, 0.04, lineProps.length, 8]} />
+				<T.MeshBasicMaterial color="#1e90ff" />
+			</T.Mesh>
+		{/each}
+
+		<HTML position={measurement.labelPos} center>
+			<div
+				style="background: rgba(0, 0, 0, 0.8); color: #1e90ff; padding: 4px 8px; border-radius: 4px; font-family: monospace; font-size: 14px; font-weight: bold; pointer-events: none; border: 1px solid #1e90ff; white-space: nowrap; user-select: none; margin-left: 10px;"
+			>
+				Kick: {measurement.height.toFixed(2)}"
+			</div>
+		</HTML>
 	{/each}
 
 	<!-- Start Cap -->
