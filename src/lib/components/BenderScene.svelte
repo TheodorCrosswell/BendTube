@@ -87,10 +87,10 @@
 		const distance = vA.distanceTo(vB);
 		const midPoint = vA.clone().lerp(vB, 0.5).toArray();
 		const direction = vB.clone().sub(vA).normalize();
-		
+
 		// Fallback for zero distance
 		if (distance < 0.001) direction.set(0, 1, 0);
-		
+
 		const quaternion = new THREE.Quaternion()
 			.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction)
 			.toArray();
@@ -112,7 +112,7 @@
 			const n0 = frame.n.clone().normalize();
 			const binormal = frame.binormal.clone().normalize();
 			const angleRad = frame.bend.angleRad;
-			
+
 			// Compute normals and forward direction for the newly generated straight section
 			const n1 = n0.clone().applyAxisAngle(binormal, angleRad).normalize();
 			const dir1 = dir0.clone().applyAxisAngle(binormal, angleRad).normalize();
@@ -129,12 +129,12 @@
 					break;
 				}
 			}
-			
+
 			let p1_center;
 			if (nextFrame) {
 				const tEndNext = nextFrame.L1 / curve.totalLen;
 				const pStartNext = curve.getPoint(tEndNext);
-				
+
 				// Extend the measurement point forward to the centerline intersection vertex of the next bend
 				// This ensures we measure to the physical outer edge ("back") of the next bend
 				const distToVertex = bendRadius * Math.tan(Math.abs(nextFrame.bend.angleRad) / 2);
@@ -153,7 +153,7 @@
 			const pProj = p0_outer.clone().add(dir0.clone().multiplyScalar(projectionDistance));
 
 			// Push the entire dimension line drawing outwards visually so it doesn't clip the 3D conduit
-			const visualOffset = n0.clone().multiplyScalar(-4); // 4 inches away from outer edge
+			const visualOffset = n0.clone().multiplyScalar(-8); // 8 inches away from outer edge
 
 			const v_p0 = p0_outer.clone().add(visualOffset);
 			const v_pProj = pProj.clone().add(visualOffset);
@@ -171,10 +171,11 @@
 						createCylinderLine(p0_outer.toArray(), v_p0.toArray()), // Extension Line 1
 						createCylinderLine(p1_outer.toArray(), v_p1_shifted.toArray()) // Extension Line 2
 					],
-					labelPos: v_pProj
-						.clone()
-						.add(heightVec.clone().multiplyScalar(0.5))
-						.toArray() as [number, number, number],
+					labelPos: v_pProj.clone().add(heightVec.clone().multiplyScalar(0.5)).toArray() as [
+						number,
+						number,
+						number
+					],
 					height: height
 				});
 			}
@@ -188,7 +189,7 @@
 		const measurements = [];
 		const sortedFrames = [...curve.bendFrames].sort((a, b) => a.L1 - b.L1);
 		const validFrames = sortedFrames.filter((f) => Math.abs(f.bend.angleRad) >= 0.01);
-		
+
 		const numSections = validFrames.length + 1;
 
 		for (let i = 0; i < numSections; i++) {
@@ -211,10 +212,10 @@
 				const prevFrame = validFrames[i - 1];
 				const tPhysicalStart = (prevFrame.L1 + prevFrame.bend.arcLen) / curve.totalLen;
 				const pPhysicalStart = curve.getPoint(tPhysicalStart);
-				
+
 				binormal = prevFrame.binormal.clone().normalize();
 				dir = prevFrame.dir.clone().applyAxisAngle(binormal, prevFrame.bend.angleRad).normalize();
-				
+
 				// Extend the start line backwards to reach the "back of the bend" intersection point
 				const distToPrevVertex = bendRadius * Math.tan(Math.abs(prevFrame.bend.angleRad) / 2);
 				pStart_center = pPhysicalStart.clone().sub(dir.clone().multiplyScalar(distToPrevVertex));
@@ -227,7 +228,7 @@
 				const nextFrame = validFrames[i];
 				const tPhysicalEnd = nextFrame.L1 / curve.totalLen;
 				const pPhysicalEnd = curve.getPoint(tPhysicalEnd);
-				
+
 				// Extend the end line forwards to reach the "back of the bend" intersection point
 				const distToNextVertex = bendRadius * Math.tan(Math.abs(nextFrame.bend.angleRad) / 2);
 				pEnd_center = pPhysicalEnd.clone().add(dir.clone().multiplyScalar(distToNextVertex));
@@ -238,23 +239,138 @@
 			const length = segmentVector.dot(dir);
 
 			if (length >= 0.1) {
-				// Offset by 6 inches sideways along the binormal vector to avoid colliding with Kicks
-				const visualOffset = binormal.clone().multiplyScalar(6); 
-				
+				// Offset by 10 inches sideways along the binormal vector to avoid colliding with Kicks
+				const visualOffset = binormal.clone().multiplyScalar(10);
+
 				const v_pStart = pStart_center.clone().add(visualOffset);
 				const v_pEnd = pEnd_center.clone().add(visualOffset);
 
 				measurements.push({
 					id: `straight-len-${i}`,
 					lines: [
-						createCylinderLine(v_pStart.toArray() as [number, number, number], v_pEnd.toArray() as [number, number, number]),
-						createCylinderLine(pStart_center.toArray() as [number, number, number], v_pStart.toArray() as [number, number, number]),
-						createCylinderLine(pEnd_center.toArray() as [number, number, number], v_pEnd.toArray() as [number, number, number])
+						createCylinderLine(
+							v_pStart.toArray() as [number, number, number],
+							v_pEnd.toArray() as [number, number, number]
+						),
+						createCylinderLine(
+							pStart_center.toArray() as [number, number, number],
+							v_pStart.toArray() as [number, number, number]
+						),
+						createCylinderLine(
+							pEnd_center.toArray() as [number, number, number],
+							v_pEnd.toArray() as [number, number, number]
+						)
 					],
 					labelPos: v_pStart.clone().lerp(v_pEnd, 0.5).toArray() as [number, number, number],
 					length: length
 				});
 			}
+		}
+
+		return measurements;
+	});
+
+	// --- Offset Measurements ---
+	let offsetMeasurements = $derived.by(() => {
+		const measurements = [];
+		const sortedFrames = [...curve.bendFrames].sort((a, b) => a.L1 - b.L1);
+		const validFrames = sortedFrames.filter((f) => Math.abs(f.bend.angleRad) >= 0.01);
+
+		for (let i = 0; i < validFrames.length - 1; i++) {
+			const frame0 = validFrames[i];
+			const frame1 = validFrames[i + 1];
+
+			const dir0 = frame0.dir.clone().normalize();
+			const n0 = frame0.n.clone().normalize();
+			const binormal0 = frame0.binormal.clone().normalize();
+
+			const tStart0 = frame0.L1 / curve.totalLen;
+			const p0_center = curve.getPoint(tStart0);
+			const p0_outer = p0_center.clone().add(n0.clone().multiplyScalar(-pipeRadius));
+
+			// Point A: end of the second bend
+			const tA = (frame1.L1 + frame1.bend.arcLen) / curve.totalLen;
+			const pA_center = curve.getPoint(tA);
+
+			// Point B: end of straight section after second bend
+			const nextFrame = validFrames[i + 2];
+			let pB_center;
+
+			const dir1 = frame1.dir
+				.clone()
+				.applyAxisAngle(frame1.binormal.clone().normalize(), frame1.bend.angleRad)
+				.normalize();
+
+			if (nextFrame) {
+				const tB = nextFrame.L1 / curve.totalLen;
+				const pB_physical = curve.getPoint(tB);
+				const distToVertex = bendRadius * Math.tan(Math.abs(nextFrame.bend.angleRad) / 2);
+				pB_center = pB_physical.clone().add(dir1.clone().multiplyScalar(distToVertex));
+			} else {
+				pB_center = curve.getPoint(1);
+			}
+
+			const createMeasurement = (
+				p_center: THREE.Vector3,
+				labelPrefix: string,
+				isPointA: boolean
+			) => {
+				const p_outer = p_center.clone().add(n0.clone().multiplyScalar(-pipeRadius));
+
+				const diff = p_outer.clone().sub(p0_outer);
+				const distDir0 = diff.dot(dir0);
+				const heightSigned = diff.dot(n0);
+				const height = Math.abs(heightSigned);
+				const distBinormal = diff.dot(binormal0);
+
+				if (height < 0.1) return null;
+
+				// Offset sideways avoiding straights/kicks while dynamically clearing out-of-plane twists
+				const baseVisualOffset = isPointA ? 16 : 24;
+				const visualOffsetDist = Math.max(baseVisualOffset, distBinormal + (isPointA ? 8 : 16));
+				const v_offset = binormal0.clone().multiplyScalar(visualOffsetDist);
+
+				const v_p0_outer = p0_outer.clone().add(v_offset);
+				const v_pProjLine = p0_outer
+					.clone()
+					.add(dir0.clone().multiplyScalar(distDir0))
+					.add(v_offset);
+				const v_pHeight = v_pProjLine.clone().add(n0.clone().multiplyScalar(heightSigned));
+
+				return {
+					id: `offset-${i}-${isPointA ? 'A' : 'B'}`,
+					lines: [
+						createCylinderLine(
+							v_p0_outer.toArray() as [number, number, number],
+							v_pProjLine.toArray() as [number, number, number]
+						), // Baseline
+						createCylinderLine(
+							v_pProjLine.toArray() as [number, number, number],
+							v_pHeight.toArray() as [number, number, number]
+						), // Height line
+						createCylinderLine(
+							p0_outer.toArray() as [number, number, number],
+							v_p0_outer.toArray() as [number, number, number]
+						), // Extension Line 1
+						createCylinderLine(
+							p_outer.toArray() as [number, number, number],
+							v_pHeight.toArray() as [number, number, number]
+						) // Extension Line 2
+					],
+					labelPos: v_pProjLine
+						.clone()
+						.add(n0.clone().multiplyScalar(heightSigned * 0.5))
+						.toArray() as [number, number, number],
+					height: heightSigned,
+					labelPrefix
+				};
+			};
+
+			const measA = createMeasurement(pA_center, 'Offset (Bend 2)', true);
+			if (measA) measurements.push(measA);
+
+			const measB = createMeasurement(pB_center, 'Offset (End)', false);
+			if (measB && pB_center.distanceTo(pA_center) > 0.1) measurements.push(measB);
 		}
 
 		return measurements;
@@ -337,13 +453,13 @@
 			const t = e.uv.x;
 			// Convert fractional 0-1 mapped length representation to real inches
 			const newPosition = Number((t * curve.totalLen).toFixed(2));
-			
+
 			// eslint-disable-next-line @typescript-eslint/no-explicit-any
 			const newBend: any = { angle: 0, rotation: 0, position: newPosition, mark: 'star' };
-			
+
 			// Append and sort to maintain chronological run order
 			const newBends = [...bends, newBend].sort((a, b) => a.position - b.position);
-			
+
 			bends = newBends;
 			// Automatically select the newly created bend
 			activeBendIndex = newBends.indexOf(newBend);
@@ -596,8 +712,15 @@
 				<!-- svelte-ignore a11y_click_events_have_key_events -->
 				<!-- svelte-ignore a11y_no_static_element_interactions -->
 				<div
-					onclick={(e) => { e.stopPropagation(); activeBendIndex = mark.index; }}
-					style="background: {activeBendIndex === mark.index ? '#1e90ff' : 'rgba(0,0,0,0.8)'}; color: white; padding: 4px 8px; border-radius: 4px; font-family: sans-serif; font-size: 12px; font-weight: bold; pointer-events: auto; cursor: pointer; margin-top: -40px; white-space: nowrap; user-select: none; transition: background 0.2s;"
+					onclick={(e) => {
+						e.stopPropagation();
+						activeBendIndex = mark.index;
+					}}
+					style="background: {activeBendIndex === mark.index
+						? '#1e90ff'
+						: 'transparent'}; color: {activeBendIndex === mark.index
+						? 'white'
+						: '#cccccc'}; padding: 4px 8px; border-radius: 4px; font-family: sans-serif; font-size: 12px; font-weight: bold; pointer-events: auto; cursor: pointer; margin-top: -40px; white-space: nowrap; user-select: none; transition: background 0.2s; text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;"
 				>
 					Bend {mark.index + 1}
 				</div>
@@ -616,7 +739,7 @@
 
 		<HTML position={measurement.labelPos} center>
 			<div
-				style="background: rgba(0, 0, 0, 0.8); color: #1e90ff; padding: 4px 8px; border-radius: 4px; font-family: monospace; font-size: 14px; font-weight: bold; pointer-events: none; border: 1px solid #1e90ff; white-space: nowrap; user-select: none; margin-left: 10px;"
+				style="color: #1e90ff; font-family: monospace; font-size: 14px; font-weight: bold; pointer-events: none; white-space: nowrap; user-select: none; margin-left: 10px; text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;"
 			>
 				Kick: {measurement.height.toFixed(2)}"
 			</div>
@@ -634,9 +757,27 @@
 
 		<HTML position={measurement.labelPos} center>
 			<div
-				style="background: rgba(0, 0, 0, 0.8); color: #32cd32; padding: 4px 8px; border-radius: 4px; font-family: monospace; font-size: 14px; font-weight: bold; pointer-events: none; border: 1px solid #32cd32; white-space: nowrap; user-select: none; margin-bottom: 20px;"
+				style="color: #32cd32; font-family: monospace; font-size: 14px; font-weight: bold; pointer-events: none; white-space: nowrap; user-select: none; margin-bottom: 10px; text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;"
 			>
 				Length: {measurement.length.toFixed(2)}"
+			</div>
+		</HTML>
+	{/each}
+
+	<!-- Offset Measurement Overlays -->
+	{#each offsetMeasurements as measurement (measurement.id)}
+		{#each measurement.lines as lineProps}
+			<T.Mesh position={lineProps.position} quaternion={lineProps.quaternion}>
+				<T.CylinderGeometry args={[0.04, 0.04, lineProps.length, 8]} />
+				<T.MeshBasicMaterial color="#ff8c00" />
+			</T.Mesh>
+		{/each}
+
+		<HTML position={measurement.labelPos} center>
+			<div
+				style="color: #ff8c00; font-family: monospace; font-size: 14px; font-weight: bold; pointer-events: none; white-space: nowrap; user-select: none; margin-left: 10px; text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;"
+			>
+				{measurement.labelPrefix}: {Math.abs(measurement.height).toFixed(2)}"
 			</div>
 		</HTML>
 	{/each}
