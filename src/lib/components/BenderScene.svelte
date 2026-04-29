@@ -21,6 +21,7 @@
 		cutPosition?: number;
 		coupleMode?: boolean;
 		coupleEnd?: 1 | 2;
+		showGrid?: boolean;
 	};
 
 	let {
@@ -47,7 +48,8 @@
 		cutMode = false,
 		cutPosition = 60,
 		coupleMode = false,
-		coupleEnd = 2
+		coupleEnd = 2,
+		showGrid = true
 	}: ExtendedProps = $props();
 
 	interactivity();
@@ -355,35 +357,37 @@
 	</T.PerspectiveCamera>
 {/if}
 
-<Grid
-	gridSize={[2400, 2400]}
-	sectionSize={12}
-	cellSize={1}
-	position={[60, 0, 0]}
-	sectionColor="#888888"
-	cellColor="#444444"
-	fadeDistance={1000}
-/>
-<Grid
-	gridSize={[2400, 2400]}
-	sectionSize={12}
-	cellSize={1}
-	position={[60, 60, 0]}
-	rotation.x={Math.PI / 2}
-	sectionColor="#888888"
-	cellColor="#444444"
-	fadeDistance={1000}
-/>
-<Grid
-	gridSize={[2400, 2400]}
-	sectionSize={12}
-	cellSize={1}
-	position={[60, 60, 0]}
-	rotation.z={Math.PI / 2}
-	sectionColor="#888888"
-	cellColor="#444444"
-	fadeDistance={1000}
-/>
+{#if showGrid}
+	<Grid
+		gridSize={[2400, 2400]}
+		sectionSize={12}
+		cellSize={1}
+		position={[60, 0, 0]}
+		sectionColor="#888888"
+		cellColor="#444444"
+		fadeDistance={1000}
+	/>
+	<Grid
+		gridSize={[2400, 2400]}
+		sectionSize={12}
+		cellSize={1}
+		position={[60, 60, 0]}
+		rotation.x={Math.PI / 2}
+		sectionColor="#888888"
+		cellColor="#444444"
+		fadeDistance={1000}
+	/>
+	<Grid
+		gridSize={[2400, 2400]}
+		sectionSize={12}
+		cellSize={1}
+		position={[60, 60, 0]}
+		rotation.z={Math.PI / 2}
+		sectionColor="#888888"
+		cellColor="#444444"
+		fadeDistance={1000}
+	/>
+{/if}
 
 <!-- Master Transformation Group -->
 <T.Group

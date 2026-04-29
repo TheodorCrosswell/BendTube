@@ -11,6 +11,7 @@
 	let activeBendIndex = $state(0);
 
 	let isOrthographic = $state(false);
+	let showGrid = $state(true);
 
 	// Mobile-first layout state
 	type MenuType = 'conduit' | 'bending' | 'stats' | 'transform' | 'modify' | null;
@@ -228,10 +229,15 @@
 <div class="app-layout">
 	<!-- Top: 3D Canvas Area (Flexes to fill remaining space dynamically) -->
 	<div class="canvas-wrapper" style="bottom: {activeMenu ? menuHeight + 'px' : '0'}">
-		<!-- Global View Toggle Floating Top Left -->
-		<button class="view-toggle" onclick={() => (isOrthographic = !isOrthographic)}>
-			{isOrthographic ? 'Orthographic' : 'Perspective'}
-		</button>
+		<!-- Global View & Tool Toggles Floating Top Left -->
+		<div class="top-left-controls">
+			<button class="view-toggle" onclick={() => (isOrthographic = !isOrthographic)}>
+				{isOrthographic ? 'Orthographic' : 'Perspective'}
+			</button>
+			<button class="view-toggle" onclick={() => (showGrid = !showGrid)}>
+				{showGrid ? 'Hide Grid' : 'Show Grid'}
+			</button>
+		</div>
 
 		{#if browser}
 			<Canvas shadows={THREE.PCFShadowMap}>
@@ -250,6 +256,7 @@
 					{cutPosition}
 					coupleMode={activeMenu === 'modify' && modifyMode === 'couple'}
 					{coupleEnd}
+					{showGrid}
 				/>
 			</Canvas>
 		{/if}
@@ -570,10 +577,16 @@
 		background-color: #1a1a1a;
 	}
 
-	.view-toggle {
+	.top-left-controls {
 		position: absolute;
 		top: 15px; left: 15px;
 		z-index: 10;
+		display: flex;
+		gap: 8px;
+		flex-wrap: wrap;
+	}
+
+	.view-toggle {
 		background: rgba(30, 30, 30, 0.85);
 		color: #fff;
 		border: 1px solid #444;
