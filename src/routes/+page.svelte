@@ -5,6 +5,7 @@
 	import BenderScene from '../lib/components/BenderScene.svelte';
 	import { browser } from '$app/environment';
 	import conduitData from '$lib/data/conduit-sizes.json';
+	import { generateChallenge, type ChallengeData } from '$lib/utils/challenge';
 
 	type Bend = { angle: number; rotation: number; position: number; mark: 'star' | 'arrow' };
 	let bends = $state<Bend[]>([{ angle: 0, rotation: 0, position: 60, mark: 'star' }]);
@@ -12,6 +13,12 @@
 
 	let isOrthographic = $state(false);
 	let showGrid = $state(true);
+
+	// Challenge Generation State
+	let challengeData = $state<ChallengeData | undefined>(undefined);
+	let isVictorious = $state(false);
+	let showChallengeMenu = $state(false);
+	let difficulty = $state(1);
 
 	// Mobile-first layout state
 	type MenuType = 'conduit' | 'bending' | 'stats' | 'transform' | 'modify' | null;
@@ -83,6 +90,30 @@
 		'1/2': 4, '3/4': 4.5, '1': 5.75, '1 1/4': 7.25, '1 1/2': 8.25,
 		'2': 9.5, '2 1/2': 10.5, '3': 13, '3 1/2': 15, '4': 16, '5': 24, '6': 30
 	};
+
+	// --- Challenge Generation Logic ---
+	function handleGenerateChallenge() {
+		const standardRadius = standardRadii[selectedSize] ?? 4;
+		challengeData = generateChallenge(difficulty, selectedSize, outerDiameter, standardRadius);
+
+		// Reset Player Environment to start working
+		pipeTransform = { posX: 0, posY: 0, posZ: 0, rotX: 0, rotY: 0, rotZ: 0 };
+		bends = [{ angle: 0, rotation: 0, position: 60, mark: 'star' }];
+		totalLength = 120;
+		couplings = [];
+		showChallengeMenu = false;
+	}
+
+	function exitChallenge() {
+		challengeData = undefined;
+		isVictorious = false;
+		showChallengeMenu = false;
+		pipeTransform = { posX: 0, posY: 0, posZ: 0, rotX: 0, rotY: 0, rotZ: 0 };
+		bends = [{ angle: 0, rotation: 0, position: 60, mark: 'star' }];
+		totalLength = 120;
+		couplings = [];
+	}
+
 
 	function getDegreeColor(deg: number) {
 		if (deg > 360) return '#ff4d4d'; // Red
@@ -237,7 +268,32 @@
 			<button class="view-toggle" onclick={() => (showGrid = !showGrid)}>
 				{showGrid ? 'Hide Grid' : 'Show Grid'}
 			</button>
+			<button class="view-toggle" class:active={showChallengeMenu} onclick={() => showChallengeMenu = !showChallengeMenu}>
+				🎲 Random Level
+			</button>
 		</div>
+
+		<!-- Challenge Popover Window -->
+		{#if showChallengeMenu}
+			<div class="challenge-panel">
+				<h4>Level Generator</h4>
+				<div class="slider-row">
+					<label>Difficulty: {difficulty}</label>
+					<input type="range" min="1" max="5" bind:value={difficulty} />
+				</div>
+				<button class="action-btn" onclick={handleGenerateChallenge}>Generate Level</button>
+				{#if challengeData}
+					<button class="action-btn exit" onclick={exitChallenge}>Exit Challenge</button>
+				{/if}
+			</div>
+		{/if}
+
+		{#if isVictorious}
+			<div class="victory-overlay">
+				<h1>CHALLENGE COMPLETE!</h1>
+				<p>You perfectly routed the conduit.</p>
+			</div>
+		{/if}
 
 		{#if browser}
 			<Canvas shadows={THREE.PCFShadowMap}>
@@ -257,6 +313,8 @@
 					coupleMode={activeMenu === 'modify' && modifyMode === 'couple'}
 					{coupleEnd}
 					{showGrid}
+					{challengeData}
+					bind:isVictorious
 				/>
 			</Canvas>
 		{/if}
@@ -596,6 +654,86 @@
 		backdrop-filter: blur(4px);
 		cursor: pointer;
 	}
+
+	.view-toggle.active {
+		background: #1e90ff;
+		border-color: #1e90ff;
+	}
+
+	/* --- Challenge UI --- */
+	.challenge-panel {
+		position: absolute;
+		top: 60px;
+		left: 15px;
+		background: rgba(30, 30, 30, 0.95);
+		border: 1px solid #444;
+		border-radius: 12px;
+		padding: 16px;
+		z-index: 10;
+		width: 250px;
+		backdrop-filter: blur(4px);
+		box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
+	}
+
+	.challenge-panel h4 { 
+		margin: 0 0 12px 0; 
+		color: #1e90ff; 
+		font-size: 1.1rem;
+	}
+
+	.slider-row { 
+		display: flex; 
+		flex-direction: column; 
+		gap: 8px; 
+		margin-bottom: 16px; 
+		font-size: 0.9rem;
+	}
+
+	.challenge-panel .action-btn { 
+		width: 100%; 
+		padding: 10px; 
+		border-radius: 8px; 
+		border: none; 
+		font-weight: bold; 
+		cursor: pointer; 
+		margin-bottom: 8px; 
+		background: #1e90ff; 
+		color: white; 
+		transition: background 0.2s;
+	}
+
+	.challenge-panel .action-btn.exit { 
+		background: #cc0000; 
+		margin-bottom: 0;
+	}
+
+	.victory-overlay {
+		position: absolute;
+		top: 50%; left: 50%;
+		transform: translate(-50%, -50%);
+		background: rgba(0, 200, 50, 0.9);
+		color: white;
+		padding: 40px 60px;
+		border-radius: 20px;
+		text-align: center;
+		z-index: 100;
+		box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+		pointer-events: none;
+		border: 2px solid #fff;
+	}
+	
+	.victory-overlay h1 { 
+		font-size: 3rem; 
+		margin: 0 0 10px 0; 
+		text-shadow: 2px 2px 0 #000; 
+	}
+	
+	.victory-overlay p { 
+		font-size: 1.2rem; 
+		margin: 0; 
+		font-weight: bold; 
+	}
+
 
 	/* --- Floating Navigation --- */
 	.floating-nav {

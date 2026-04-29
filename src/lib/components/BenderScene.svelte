@@ -10,8 +10,8 @@
 	import { getBenderDeduction } from '$lib/utils/benderDeduction';
 	import conduitSizes from '$lib/data/conduit-sizes.json';
 
-	// Import the new abstracted component
 	import MeasurementOverlays from './MeasurementOverlays.svelte';
+	import { type ChallengeData, checkVictoryCondition } from '$lib/utils/challenge';
 
 	type ExtendedProps = BenderSceneProps & {
 		pipeTransform?: { posX: number; posY: number; posZ: number; rotX: number; rotY: number; rotZ: number };
@@ -22,6 +22,8 @@
 		coupleMode?: boolean;
 		coupleEnd?: 1 | 2;
 		showGrid?: boolean;
+		challengeData?: ChallengeData;
+		isVictorious?: boolean;
 	};
 
 	let {
@@ -49,7 +51,9 @@
 		cutPosition = 60,
 		coupleMode = false,
 		coupleEnd = 2,
-		showGrid = true
+		showGrid = true,
+		challengeData = undefined,
+		isVictorious = $bindable(false)
 	}: ExtendedProps = $props();
 
 	interactivity();
@@ -154,6 +158,24 @@
 		const q = new THREE.Quaternion();
 		q.setFromUnitVectors(new THREE.Vector3(0, 0, 1), tangent);
 		return q.toArray();
+	});
+
+	// Check logic for Victory condition tracking
+	$effect(() => {
+		if (!challengeData) {
+			isVictorious = false;
+			return;
+		}
+
+		isVictorious = checkVictoryCondition(
+			challengeData,
+			pipeTransform,
+			pipeRadius,
+			startPoint,
+			curve.getTangent(0).normalize(),
+			endPoint,
+			curve.getTangent(1).normalize()
+		);
 	});
 
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -389,6 +411,43 @@
 	/>
 {/if}
 
+<!-- Challenge Environment -->
+{#if challengeData}
+	<!-- Box A -->
+	<T.Group position={challengeData.boxA.pos} quaternion={challengeData.boxA.quat}>
+		<T.Mesh>
+			<T.BoxGeometry args={challengeData.boxA.size} />
+			<T.MeshBasicMaterial color="#ffff00" roughness={0.8} />
+		</T.Mesh>
+		<!-- Hole Visual for Box A -->
+		<T.Mesh position={[0, 0, challengeData.boxA.size[2] / 2 + 0.05]}>
+			<T.PlaneGeometry args={[(pipeRadius + 0.2) * 2, (pipeRadius + 0.2) * 2]} />
+			<T.MeshBasicMaterial color="#000000" depthTest={false} />
+		</T.Mesh>
+	</T.Group>
+
+	<!-- Box B -->
+	<T.Group position={challengeData.boxB.pos} quaternion={challengeData.boxB.quat}>
+		<T.Mesh>
+			<T.BoxGeometry args={challengeData.boxB.size} />
+			<T.MeshBasicMaterial color="#ffff00" roughness={0.8} />
+		</T.Mesh>
+		<!-- Hole Visual for Box B -->
+		<T.Mesh position={[0, 0, challengeData.boxB.size[2] / 2 + 0.05]}>
+			<T.PlaneGeometry args={[(pipeRadius + 0.2) * 2, (pipeRadius + 0.2) * 2]} />
+			<T.MeshBasicMaterial color="#000000" depthTest={false} />
+		</T.Mesh>
+	</T.Group>
+
+	<!-- Obstacles -->
+	{#each challengeData.obstacles as ob}
+		<T.Mesh position={ob.pos}>
+			<T.BoxGeometry args={ob.size} />
+			<T.MeshBasicMaterial color="#0055ff" roughness={0.9} />
+		</T.Mesh>
+	{/each}
+{/if}
+
 <!-- Master Transformation Group -->
 <T.Group
 	position={[pipeTransform.posX, pipeTransform.posY, pipeTransform.posZ]}
@@ -419,7 +478,7 @@
 			<T.Group position={cPos.toArray()} quaternion={cQuat.toArray()}>
 				<T.Mesh>
 					<T.CylinderGeometry args={[pipeRadius + 0.08, pipeRadius + 0.08, 2.5, 32]} />
-					<T.MeshStandardMaterial color="#cccccc" metalness={0.6} roughness={0.4} />
+					<T.MeshBasicMaterial color="#cccccc" metalness={0.6} roughness={0.4} />
 				</T.Mesh>
 			</T.Group>
 		{/each}
