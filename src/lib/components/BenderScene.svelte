@@ -13,6 +13,10 @@
 	// Import the new abstracted component
 	import MeasurementOverlays from './MeasurementOverlays.svelte';
 
+	type ExtendedProps = BenderSceneProps & {
+		pipeTransform?: { posX: number; posY: number; posZ: number; rotX: number; rotY: number; rotZ: number };
+	};
+
 	let {
 		bends = $bindable([{ angle: 0, rotation: 0, position: 60, mark: 'star' }]),
 		activeBendIndex = $bindable(0),
@@ -30,8 +34,9 @@
 			height: 0,
 			depth: 0,
 			totalDegrees: 0
-		})
-	}: BenderSceneProps = $props();
+		}),
+		pipeTransform = $bindable({ posX: 0, posY: 0, posZ: 0, rotX: 0, rotY: 0, rotZ: 0 })
+	}: ExtendedProps = $props();
 
 	interactivity();
 
@@ -168,6 +173,21 @@
 		] as [number, number, number];
 	});
 
+	// Converts the local tool position to world position so the camera can correctly track it
+	// even when the entire pipe structure is translated/rotated
+	let worldToolPos = $derived.by(() => {
+		const localVec = new THREE.Vector3(toolPos[0], toolPos[1], toolPos[2]);
+		const euler = new THREE.Euler(
+			pipeTransform.rotX * (Math.PI / 180),
+			pipeTransform.rotY * (Math.PI / 180),
+			pipeTransform.rotZ * (Math.PI / 180),
+			'XYZ'
+		);
+		localVec.applyEuler(euler);
+		localVec.add(new THREE.Vector3(pipeTransform.posX, pipeTransform.posY, pipeTransform.posZ));
+		return [localVec.x, localVec.y, localVec.z] as [number, number, number];
+	});
+
 	let toolQuat = $derived.by(() => {
 		if (!activeBendFrame) return new THREE.Quaternion();
 		const qBase = new THREE.Quaternion().setFromRotationMatrix(
@@ -196,7 +216,7 @@
 	$effect(() => {
 		const currentBend = bends[activeBendIndex];
 		const currentPosition = currentBend?.position;
-		const currentToolPos = toolPos;
+		const currentWorldToolPos = worldToolPos;
 
 		if (
 			lastIndex === activeBendIndex &&
@@ -206,9 +226,9 @@
 			lastToolPos !== undefined
 		) {
 			if (cameraRef && controlsRef) {
-				const dx = currentToolPos[0] - lastToolPos[0];
-				const dy = currentToolPos[1] - lastToolPos[1];
-				const dz = currentToolPos[2] - lastToolPos[2];
+				const dx = currentWorldToolPos[0] - lastToolPos[0];
+				const dy = currentWorldToolPos[1] - lastToolPos[1];
+				const dz = currentWorldToolPos[2] - lastToolPos[2];
 
 				cameraRef.position.x += dx;
 				cameraRef.position.y += dy;
@@ -227,7 +247,7 @@
 
 		lastIndex = activeBendIndex;
 		lastPosition = currentPosition;
-		lastToolPos = currentToolPos;
+		lastToolPos = currentWorldToolPos;
 	});
 
 	$effect(() => {
@@ -324,95 +344,105 @@
 	fadeDistance={250}
 />
 
-<T.Group position={[0, pipeRadius, pipeRadius]}>
-	<T.Mesh onclick={onConduitClick}>
-		<T.TubeGeometry bind:ref={tubeGeom} args={[curve, 100, pipeRadius, 12, false]} />
-		<T.MeshBasicMaterial color={textTexture ? '#ffffff' : '#999999'} map={textTexture || null} />
-	</T.Mesh>
+<!-- Master Transformation Group -->
+<T.Group
+	position={[pipeTransform.posX, pipeTransform.posY, pipeTransform.posZ]}
+	rotation={[
+		pipeTransform.rotX * (Math.PI / 180),
+		pipeTransform.rotY * (Math.PI / 180),
+		pipeTransform.rotZ * (Math.PI / 180)
+	]}
+>
+	<T.Group position={[0, pipeRadius, pipeRadius]}>
+		<T.Mesh onclick={onConduitClick}>
+			<T.TubeGeometry bind:ref={tubeGeom} args={[curve, 100, pipeRadius, 12, false]} />
+			<T.MeshBasicMaterial color={textTexture ? '#ffffff' : '#999999'} map={textTexture || null} />
+		</T.Mesh>
 
-	<!-- Bend Marks -->
-	{#each marks as mark (mark.index)}
-		<T.Group position={mark.pos} quaternion={mark.quat}>
-			<T.Mesh
-				onclick={(e) => {
-					e.stopPropagation();
-					activeBendIndex = mark.index;
-				}}
-			>
-				<T.CylinderGeometry args={[pipeRadius + 0.02, pipeRadius + 0.02, 0.125, 32]} />
-				<T.MeshBasicMaterial color={activeBendIndex === mark.index ? '#1e90ff' : '#111111'} />
-			</T.Mesh>
-
-			<HTML center>
-				<!-- svelte-ignore a11y_no_static_element_interactions -->
-				<!-- svelte-ignore a11y_click_events_have_key_events -->
-				<div
-					onpointerdown={(e) => {
-						e.stopPropagation();
-						activeBendIndex = mark.index;
-					}}
+		<!-- Bend Marks -->
+		{#each marks as mark (mark.index)}
+			<T.Group position={mark.pos} quaternion={mark.quat}>
+				<T.Mesh
 					onclick={(e) => {
 						e.stopPropagation();
 						activeBendIndex = mark.index;
 					}}
-					style="background: {activeBendIndex === mark.index
-						? '#1e90ff'
-						: 'transparent'}; color: {activeBendIndex === mark.index
-						? 'white'
-						: '#cccccc'}; padding: 4px 8px; border-radius: 4px; font-family: sans-serif; font-size: 12px; font-weight: bold; pointer-events: auto; cursor: pointer; margin-top: -40px; white-space: nowrap; user-select: none; transition: background 0.2s; text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;"
 				>
-					Bend {mark.index + 1}
-				</div>
-			</HTML>
+					<T.CylinderGeometry args={[pipeRadius + 0.02, pipeRadius + 0.02, 0.125, 32]} />
+					<T.MeshBasicMaterial color={activeBendIndex === mark.index ? '#1e90ff' : '#111111'} />
+				</T.Mesh>
+
+				<HTML center>
+					<!-- svelte-ignore a11y_no_static_element_interactions -->
+					<!-- svelte-ignore a11y_click_events_have_key_events -->
+					<div
+						onpointerdown={(e) => {
+							e.stopPropagation();
+							activeBendIndex = mark.index;
+						}}
+						onclick={(e) => {
+							e.stopPropagation();
+							activeBendIndex = mark.index;
+						}}
+						style="background: {activeBendIndex === mark.index
+							? '#1e90ff'
+							: 'transparent'}; color: {activeBendIndex === mark.index
+							? 'white'
+							: '#cccccc'}; padding: 4px 8px; border-radius: 4px; font-family: sans-serif; font-size: 12px; font-weight: bold; pointer-events: auto; cursor: pointer; margin-top: -40px; white-space: nowrap; user-select: none; transition: background 0.2s; text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;"
+					>
+						Bend {mark.index + 1}
+					</div>
+				</HTML>
+			</T.Group>
+		{/each}
+
+		<!-- Isolated Measurement Overlays -->
+		<MeasurementOverlays {curve} {pipeRadius} {bendRadius} />
+
+		<!-- Start Cap -->
+		<T.Group position={startPoint} quaternion={startQuaternion}>
+			<T.Mesh>
+				<T.RingGeometry args={[innerRadius, pipeRadius, 12]} />
+				<T.MeshBasicMaterial color={textTexture ? '#ffffff' : '#999999'} map={textTexture || null} />
+			</T.Mesh>
+			<T.Mesh>
+				<T.CircleGeometry args={[innerRadius, 12]} />
+				<T.MeshBasicMaterial color="#000000" />
+			</T.Mesh>
 		</T.Group>
-	{/each}
 
-	<!-- Isolated Measurement Overlays -->
-	<MeasurementOverlays {curve} {pipeRadius} {bendRadius} />
-
-	<!-- Start Cap -->
-	<T.Group position={startPoint} quaternion={startQuaternion}>
-		<T.Mesh>
-			<T.RingGeometry args={[innerRadius, pipeRadius, 12]} />
-			<T.MeshBasicMaterial color={textTexture ? '#ffffff' : '#999999'} map={textTexture || null} />
-		</T.Mesh>
-		<T.Mesh>
-			<T.CircleGeometry args={[innerRadius, 12]} />
-			<T.MeshBasicMaterial color="#000000" />
-		</T.Mesh>
+		<!-- End Cap -->
+		<T.Group position={endPoint} quaternion={endQuaternion}>
+			<T.Mesh>
+				<T.RingGeometry args={[innerRadius, pipeRadius, 12]} />
+				<T.MeshBasicMaterial color={textTexture ? '#ffffff' : '#999999'} map={textTexture || null} />
+			</T.Mesh>
+			<T.Mesh>
+				<T.CircleGeometry args={[innerRadius, 12]} />
+				<T.MeshBasicMaterial color="#000000" />
+			</T.Mesh>
+		</T.Group>
 	</T.Group>
 
-	<!-- End Cap -->
-	<T.Group position={endPoint} quaternion={endQuaternion}>
-		<T.Mesh>
-			<T.RingGeometry args={[innerRadius, pipeRadius, 12]} />
-			<T.MeshBasicMaterial color={textTexture ? '#ffffff' : '#999999'} map={textTexture || null} />
-		</T.Mesh>
-		<T.Mesh>
-			<T.CircleGeometry args={[innerRadius, 12]} />
-			<T.MeshBasicMaterial color="#000000" />
-		</T.Mesh>
-	</T.Group>
+	<!-- Bender Tool -->
+	{#if activeBendFrame}
+		<T.Group position={toolPos} quaternion={toolQuat.toArray()} scale={toolScaleFactor}>
+			<T.Mesh rotation.z={-Math.PI / 2}>
+				<T.TorusGeometry args={[4, 0.45, 16, 32, Math.PI / 2 + 0.1]} />
+				<T.MeshBasicMaterial color="#1e90ff" />
+			</T.Mesh>
+
+			<T.Group rotation.z={Math.PI / 6}>
+				<T.Mesh position={[0, 4, 0]}>
+					<T.CylinderGeometry args={[0.15, 0.15, 16, 8]} />
+					<T.MeshBasicMaterial color="#333333" />
+				</T.Mesh>
+
+				<T.Mesh position={[0, 11, 0]}>
+					<T.CylinderGeometry args={[0.2, 0.2, 2, 8]} />
+					<T.MeshBasicMaterial color="#cc0000" />
+				</T.Mesh>
+			</T.Group>
+		</T.Group>
+	{/if}
 </T.Group>
-
-<!-- Bender Tool -->
-{#if activeBendFrame}
-	<T.Group position={toolPos} quaternion={toolQuat.toArray()} scale={toolScaleFactor}>
-		<T.Mesh rotation.z={-Math.PI / 2}>
-			<T.TorusGeometry args={[4, 0.45, 16, 32, Math.PI / 2 + 0.1]} />
-			<T.MeshBasicMaterial color="#1e90ff" />
-		</T.Mesh>
-
-		<T.Group rotation.z={Math.PI / 6}>
-			<T.Mesh position={[0, 4, 0]}>
-				<T.CylinderGeometry args={[0.15, 0.15, 16, 8]} />
-				<T.MeshBasicMaterial color="#333333" />
-			</T.Mesh>
-
-			<T.Mesh position={[0, 11, 0]}>
-				<T.CylinderGeometry args={[0.2, 0.2, 2, 8]} />
-				<T.MeshBasicMaterial color="#cc0000" />
-			</T.Mesh>
-		</T.Group>
-	</T.Group>
-{/if}

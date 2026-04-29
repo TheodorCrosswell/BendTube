@@ -13,7 +13,7 @@
 	let isOrthographic = $state(false);
 
 	// Mobile-first layout state
-	type MenuType = 'conduit' | 'bending' | 'stats' | null;
+	type MenuType = 'conduit' | 'bending' | 'stats' | 'transform' | null;
 	let activeMenu = $state<MenuType>(null);
 	
 	// Track rendered menu to keep content alive during the close animation
@@ -60,6 +60,13 @@
 		totalDegrees: 0
 	});
 
+	// Transform state for global positioning
+	type TransformAxis = 'posX' | 'posY' | 'posZ' | 'rotX' | 'rotY' | 'rotZ';
+	let pipeTransform = $state<Record<TransformAxis, number>>({
+		posX: 0, posY: 0, posZ: 0,
+		rotX: 0, rotY: 0, rotZ: 0
+	});
+
 	// Standard typical bender shoe Centerline Radii (CLR)
 	const standardRadii: Record<string, number> = {
 		'1/2': 4, '3/4': 4.5, '1': 5.75, '1 1/4': 7.25, '1 1/2': 8.25,
@@ -77,28 +84,47 @@
 	let isDragging = false;
 	let dragStartX = 0;
 	let dragStartValue = 0;
+	let dragTarget = '';
+	let dragAttr = '';
 
-	function clampValue(val: number) {
-		if (activeAttribute === 'position') return Math.max(0, Math.min(120, val));
-		if (activeAttribute === 'angle') return Math.max(-110, Math.min(110, val));
-		return Math.max(0, Math.min(360, val)); // rotation
+	function clampValue(target: string, attr: string, val: number) {
+		if (target === 'bend') {
+			if (attr === 'position') return Math.max(0, Math.min(120, val));
+			if (attr === 'angle') return Math.max(-110, Math.min(110, val));
+			return Math.max(0, Math.min(360, val)); // rotation
+		}
+		// General transforms have no hard clamping constraints
+		return val;
 	}
 
-	function handlePointerDown(e: PointerEvent) {
+	function handlePointerDown(e: PointerEvent, target: string, attr: string) {
 		isDragging = true;
 		dragStartX = e.clientX;
-		dragStartValue = bends[activeBendIndex][activeAttribute];
+		dragTarget = target;
+		dragAttr = attr;
+		
+		if (target === 'bend') {
+			dragStartValue = bends[activeBendIndex][attr as BendAttribute];
+		} else {
+			dragStartValue = pipeTransform[attr as TransformAxis];
+		}
 		(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
 	}
 
 	function handlePointerMove(e: PointerEvent) {
 		if (!isDragging) return;
 		
-		const sensitivity = activeAttribute === 'position' ? 0.1 : 0.5;
+		const isPosType = (dragTarget === 'bend' && dragAttr === 'position') || (dragTarget === 'transform' && dragAttr.startsWith('pos'));
+		const sensitivity = isPosType ? 0.1 : 0.5;
 		const delta = (e.clientX - dragStartX) * sensitivity;
 		
-		let newValue = clampValue(dragStartValue + delta);
-		bends[activeBendIndex][activeAttribute] = Number(newValue.toFixed(3));
+		let newValue = clampValue(dragTarget, dragAttr, dragStartValue + delta);
+		
+		if (dragTarget === 'bend') {
+			bends[activeBendIndex][dragAttr as BendAttribute] = Number(newValue.toFixed(3));
+		} else {
+			pipeTransform[dragAttr as TransformAxis] = Number(newValue.toFixed(3));
+		}
 	}
 
 	function handlePointerUp(e: PointerEvent) {
@@ -106,22 +132,27 @@
 		(e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
 	}
 
-	function handleKeyDown(e: KeyboardEvent) {
-		const step = activeAttribute === 'position' ? 1 : 5;
-		let current = bends[activeBendIndex][activeAttribute];
+	function handleKeyDown(e: KeyboardEvent, target: string, attr: string) {
+		const isPosType = attr === 'position' || attr.startsWith('pos');
+		const step = isPosType ? 1 : 5;
+		let current = target === 'bend' ? bends[activeBendIndex][attr as BendAttribute] : pipeTransform[attr as TransformAxis];
 
 		if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') {
 			e.preventDefault();
-			bends[activeBendIndex][activeAttribute] = clampValue(current - step);
+			let val = clampValue(target, attr, current - step);
+			if (target === 'bend') bends[activeBendIndex][attr as BendAttribute] = val;
+			else pipeTransform[attr as TransformAxis] = val;
 		} else if (e.key === 'ArrowRight' || e.key === 'ArrowUp') {
 			e.preventDefault();
-			bends[activeBendIndex][activeAttribute] = clampValue(current + step);
+			let val = clampValue(target, attr, current + step);
+			if (target === 'bend') bends[activeBendIndex][attr as BendAttribute] = val;
+			else pipeTransform[attr as TransformAxis] = val;
 		}
 	}
 
 	// === Quick Select Handlers ===
 	function addPosition(amount: number) {
-		bends[activeBendIndex].position = clampValue(bends[activeBendIndex].position + amount);
+		bends[activeBendIndex].position = clampValue('bend', 'position', bends[activeBendIndex].position + amount);
 	}
 	
 	function setAngle(angle: number) {
@@ -160,6 +191,7 @@
 					conduitSize={selectedSize}
 					conduitType={selectedType}
 					bind:stats
+					bind:pipeTransform
 				/>
 			</Canvas>
 		{/if}
@@ -174,6 +206,10 @@
 		<button class="fab" class:active={activeMenu === 'bending'} onclick={() => activeMenu = activeMenu === 'bending' ? null : 'bending'}>
 			<span class="icon">🔄</span>
 			<span class="label">Bending</span>
+		</button>
+		<button class="fab" class:active={activeMenu === 'transform'} onclick={() => activeMenu = activeMenu === 'transform' ? null : 'transform'}>
+			<span class="icon">🕹️</span>
+			<span class="label">Position</span>
 		</button>
 		<button class="fab" class:active={activeMenu === 'stats'} onclick={() => activeMenu = activeMenu === 'stats' ? null : 'stats'}>
 			<span class="icon">📊</span>
@@ -251,12 +287,12 @@
 						aria-valuenow={bends[activeBendIndex][activeAttribute]}
 						aria-valuemin={activeAttribute === 'position' ? 0 : activeAttribute === 'angle' ? -110 : 0}
 						aria-valuemax={activeAttribute === 'position' ? 120 : activeAttribute === 'angle' ? 110 : 360}
-						onpointerdown={handlePointerDown} 
+						onpointerdown={(e) => handlePointerDown(e, 'bend', activeAttribute)} 
 						onpointermove={handlePointerMove} 
 						onpointerup={handlePointerUp}
 						onpointercancel={handlePointerUp}
 						onpointerleave={handlePointerUp}
-						onkeydown={handleKeyDown}
+						onkeydown={(e) => handleKeyDown(e, 'bend', activeAttribute)}
 					>
 						<div class="drag-value">
 							{#if activeAttribute === 'position'}
@@ -291,6 +327,59 @@
 								<button onclick={() => addRotation(rot)}>+{rot}&deg;</button>
 							{/each}
 						{/if}
+					</div>
+				</div>
+			</div>
+
+		{:else if renderedMenu === 'transform'}
+			<div class="menu-content">
+				<h3>Space Transform</h3>
+				
+				<div class="transform-grid">
+					<!-- Position Drag Pads -->
+					<div class="transform-column">
+						<div class="section-label">Translation (Inches)</div>
+						{#each ['X', 'Y', 'Z'] as axis}
+							{@const posKey = `pos${axis}` as TransformAxis}
+							<div class="custom-slider-container mini">
+								<div class="drag-pad"
+									role="slider" tabindex="0"
+									onpointerdown={(e) => handlePointerDown(e, 'transform', posKey)}
+									onpointermove={handlePointerMove}
+									onpointerup={handlePointerUp}
+									onpointercancel={handlePointerUp}
+									onpointerleave={handlePointerUp}
+									onkeydown={(e) => handleKeyDown(e, 'transform', posKey)}
+								>
+									<span class="drag-label">{axis}</span>
+									<div class="drag-value mini-val">{pipeTransform[posKey].toFixed(1)}"</div>
+								</div>
+								<button class="reset-btn" onclick={() => pipeTransform[posKey] = 0} aria-label="Reset {axis} Position" title="Reset to 0">↺</button>
+							</div>
+						{/each}
+					</div>
+
+					<!-- Rotation Drag Pads -->
+					<div class="transform-column">
+						<div class="section-label">Rotation (Degrees)</div>
+						{#each ['X', 'Y', 'Z'] as axis}
+							{@const rotKey = `rot${axis}` as TransformAxis}
+							<div class="custom-slider-container mini">
+								<div class="drag-pad"
+									role="slider" tabindex="0"
+									onpointerdown={(e) => handlePointerDown(e, 'transform', rotKey)}
+									onpointermove={handlePointerMove}
+									onpointerup={handlePointerUp}
+									onpointercancel={handlePointerUp}
+									onpointerleave={handlePointerUp}
+									onkeydown={(e) => handleKeyDown(e, 'transform', rotKey)}
+								>
+									<span class="drag-label">{axis}</span>
+									<div class="drag-value mini-val">{Math.round(pipeTransform[rotKey])}&deg;</div>
+								</div>
+								<button class="reset-btn" onclick={() => pipeTransform[rotKey] = 0} aria-label="Reset {axis} Rotation" title="Reset to 0">↺</button>
+							</div>
+						{/each}
 					</div>
 				</div>
 			</div>
@@ -582,6 +671,58 @@
 		font-weight: 800;
 		color: #fff;
 		font-variant-numeric: tabular-nums;
+	}
+
+	/* --- Mini Transform Drag Pads --- */
+	.transform-grid {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 16px;
+	}
+	.transform-column {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+	}
+	.custom-slider-container.mini {
+		margin-bottom: 0;
+		display: flex;
+		gap: 8px;
+	}
+	.custom-slider-container.mini .drag-pad {
+		flex: 1;
+		height: 42px;
+		flex-direction: row;
+		justify-content: space-between;
+		padding: 0 16px;
+	}
+	.custom-slider-container.mini .drag-value.mini-val {
+		font-size: 1.15rem;
+	}
+	.drag-label {
+		color: #1e90ff;
+		font-weight: 800;
+		font-size: 1rem;
+	}
+	
+	/* Individual Reset Button for Transform */
+	.reset-btn {
+		width: 42px;
+		height: 42px;
+		flex-shrink: 0;
+		padding: 0;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		font-size: 1.4rem;
+		border-radius: 12px;
+		color: #888;
+		transition: all 0.2s;
+	}
+	.reset-btn:hover, .reset-btn:active {
+		color: #1e90ff;
+		border-color: #1e90ff;
+		background: rgba(30, 144, 255, 0.1);
 	}
 
 	/* --- Quick Select Grid --- */
