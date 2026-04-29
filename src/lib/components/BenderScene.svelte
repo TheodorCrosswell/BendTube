@@ -409,47 +409,11 @@
 		return q.toArray();
 	});
 
-	// --- Dragging Logic ---
-	let isDragging = $state(false);
-	let startX = $state(0);
-	let startY = $state(0);
-	let startAngle = $state(0);
-
-	const onPointerDown = (e: PointerEvent) => {
-		if (!bends[activeBendIndex]) return;
-		isDragging = true;
-		startX = e.clientX;
-		startY = e.clientY;
-		startAngle = bends[activeBendIndex].angle;
-		document.body.style.cursor = 'grabbing';
-		e.stopPropagation();
-	};
-
-	const onPointerMove = (e: PointerEvent) => {
-		if (!isDragging || !bends[activeBendIndex]) return;
-		const deltaX = e.clientX - startX;
-		const deltaY = e.clientY - startY;
-
-		// Adjust drag direction to feel intuitive depending on the bender alignment
-		const movement = bends[activeBendIndex].mark === 'arrow' ? -deltaX + deltaY : deltaX + deltaY;
-
-		let newAngle = startAngle + movement * 0.4;
-		bends[activeBendIndex].angle = Math.max(-110, Math.min(newAngle, 110));
-	};
-
-	const onPointerUp = () => {
-		if (isDragging) {
-			isDragging = false;
-			document.body.style.cursor = 'default';
-		}
-	};
-
 	// --- Click to add a bend logic ---
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	const onConduitClick = (e: any) => {
 		e.stopPropagation();
-		// Ensure we don't accidentally create a bend while ending a camera pan/drag
-		if (e.uv && !isDragging) {
+		if (e.uv) {
 			const t = e.uv.x;
 			// Convert fractional 0-1 mapped length representation to real inches
 			const newPosition = Number((t * curve.totalLen).toFixed(2));
@@ -624,8 +588,6 @@
 	});
 </script>
 
-<svelte:window onpointermove={onPointerMove} onpointerup={onPointerUp} />
-
 {#if isOrthographic}
 	<T.OrthographicCamera
 		makeDefault
@@ -636,12 +598,7 @@
 		}}
 		bind:ref={orthoCameraRef}
 	>
-		<OrbitControls
-			target={cameraState.target}
-			enabled={!isDragging}
-			onchange={onCameraChange}
-			bind:ref={controlsRef}
-		/>
+		<OrbitControls target={cameraState.target} onchange={onCameraChange} bind:ref={controlsRef} />
 	</T.OrthographicCamera>
 {:else}
 	<T.PerspectiveCamera
@@ -653,12 +610,7 @@
 		}}
 		bind:ref={perspCameraRef}
 	>
-		<OrbitControls
-			target={cameraState.target}
-			enabled={!isDragging}
-			onchange={onCameraChange}
-			bind:ref={controlsRef}
-		/>
+		<OrbitControls target={cameraState.target} onchange={onCameraChange} bind:ref={controlsRef} />
 	</T.PerspectiveCamera>
 {/if}
 
@@ -828,14 +780,7 @@
 			<T.MeshBasicMaterial color="#1e90ff" />
 		</T.Mesh>
 
-		<T.Group
-			rotation.z={Math.PI / 6}
-			onpointerdown={onPointerDown}
-			onpointerenter={() => (document.body.style.cursor = 'grab')}
-			onpointerleave={() => {
-				if (!isDragging) document.body.style.cursor = 'default';
-			}}
-		>
+		<T.Group rotation.z={Math.PI / 6}>
 			<T.Mesh position={[0, 4, 0]}>
 				<T.CylinderGeometry args={[0.15, 0.15, 16, 8]} />
 				<T.MeshBasicMaterial color="#333333" />
