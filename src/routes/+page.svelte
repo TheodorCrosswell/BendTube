@@ -13,7 +13,7 @@
 	let isOrthographic = $state(false);
 
 	// Mobile-first layout state
-	type MenuType = 'conduit' | 'bending' | 'stats' | 'transform' | null;
+	type MenuType = 'conduit' | 'bending' | 'stats' | 'transform' | 'modify' | null;
 	let activeMenu = $state<MenuType>(null);
 	
 	// Track rendered menu to keep content alive during the close animation
@@ -29,6 +29,16 @@
 	// Active attribute for the single slider 
 	type BendAttribute = 'position' | 'angle' | 'rotation';
 	let activeAttribute = $state<BendAttribute>('position');
+
+	// State additions for modify features (Cutting/Coupling)
+	let totalLength = $state(120);
+	type Coupling = { position: number };
+	let couplings = $state<Coupling[]>([]);
+
+	type ModifyMode = 'cut' | 'couple';
+	let modifyMode = $state<ModifyMode>('cut');
+	let cutPosition = $state(60);
+	let coupleEnd = $state<1 | 2>(2);
 
 	const standards = conduitData.conduit_standards;
 	const conduitTypes = ['EMT', 'IMC', 'Rigid'] as const;
@@ -89,9 +99,11 @@
 
 	function clampValue(target: string, attr: string, val: number) {
 		if (target === 'bend') {
-			if (attr === 'position') return Math.max(0, Math.min(120, val));
+			if (attr === 'position') return Math.max(0, Math.min(totalLength, val));
 			if (attr === 'angle') return Math.max(-110, Math.min(110, val));
 			return Math.max(0, Math.min(360, val)); // rotation
+		} else if (target === 'modify') {
+			if (attr === 'cutPosition') return Math.max(0, Math.min(totalLength, val));
 		}
 		// General transforms have no hard clamping constraints
 		return val;
@@ -105,6 +117,8 @@
 		
 		if (target === 'bend') {
 			dragStartValue = bends[activeBendIndex][attr as BendAttribute];
+		} else if (target === 'modify') {
+			dragStartValue = cutPosition;
 		} else {
 			dragStartValue = pipeTransform[attr as TransformAxis];
 		}
@@ -114,7 +128,7 @@
 	function handlePointerMove(e: PointerEvent) {
 		if (!isDragging) return;
 		
-		const isPosType = (dragTarget === 'bend' && dragAttr === 'position') || (dragTarget === 'transform' && dragAttr.startsWith('pos'));
+		const isPosType = (dragTarget === 'bend' && dragAttr === 'position') || (dragTarget === 'modify' && dragAttr === 'cutPosition') || (dragTarget === 'transform' && dragAttr.startsWith('pos'));
 		const sensitivity = isPosType ? 0.1 : 0.5;
 		const delta = (e.clientX - dragStartX) * sensitivity;
 		
@@ -122,6 +136,8 @@
 		
 		if (dragTarget === 'bend') {
 			bends[activeBendIndex][dragAttr as BendAttribute] = Number(newValue.toFixed(3));
+		} else if (dragTarget === 'modify') {
+			cutPosition = Number(newValue.toFixed(2));
 		} else {
 			pipeTransform[dragAttr as TransformAxis] = Number(newValue.toFixed(3));
 		}
@@ -133,19 +149,24 @@
 	}
 
 	function handleKeyDown(e: KeyboardEvent, target: string, attr: string) {
-		const isPosType = attr === 'position' || attr.startsWith('pos');
+		const isPosType = attr === 'position' || attr === 'cutPosition' || attr.startsWith('pos');
 		const step = isPosType ? 1 : 5;
-		let current = target === 'bend' ? bends[activeBendIndex][attr as BendAttribute] : pipeTransform[attr as TransformAxis];
+		
+		let current = target === 'bend' ? bends[activeBendIndex][attr as BendAttribute] : 
+		              target === 'modify' ? cutPosition : 
+					  pipeTransform[attr as TransformAxis];
 
 		if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') {
 			e.preventDefault();
 			let val = clampValue(target, attr, current - step);
 			if (target === 'bend') bends[activeBendIndex][attr as BendAttribute] = val;
+			else if (target === 'modify') cutPosition = val;
 			else pipeTransform[attr as TransformAxis] = val;
 		} else if (e.key === 'ArrowRight' || e.key === 'ArrowUp') {
 			e.preventDefault();
 			let val = clampValue(target, attr, current + step);
 			if (target === 'bend') bends[activeBendIndex][attr as BendAttribute] = val;
+			else if (target === 'modify') cutPosition = val;
 			else pipeTransform[attr as TransformAxis] = val;
 		}
 	}
@@ -171,6 +192,37 @@
 			bends[activeBendIndex].rotation = newRot > 360 ? newRot - 360 : newRot;
 		}
 	}
+
+	function addCutPosition(amount: number) {
+		cutPosition = clampValue('modify', 'cutPosition', cutPosition + amount);
+	}
+
+	function executeCut() {
+		totalLength = cutPosition;
+		let newBends = bends.filter(b => b.position <= totalLength);
+		if (newBends.length === 0) newBends = [{ angle: 0, rotation: 0, position: totalLength / 2, mark: 'star' }];
+		bends = newBends;
+		
+		if (activeBendIndex >= bends.length) activeBendIndex = Math.max(0, bends.length - 1);
+		
+		couplings = couplings.filter(c => c.position <= totalLength);
+		cutPosition = Math.min(cutPosition, totalLength);
+	}
+
+	function executeCouple() {
+		if (coupleEnd === 1) {
+			bends = bends.map(b => ({ ...b, position: b.position + 120 }));
+			couplings = [
+				...couplings.map(c => ({ position: c.position + 120 })),
+				{ position: 120 }
+			];
+			totalLength += 120;
+			cutPosition += 120;
+		} else {
+			couplings = [...couplings, { position: totalLength }];
+			totalLength += 120;
+		}
+	}
 </script>
 
 <div class="app-layout">
@@ -192,6 +244,12 @@
 					conduitType={selectedType}
 					bind:stats
 					bind:pipeTransform
+					{totalLength}
+					{couplings}
+					cutMode={activeMenu === 'modify' && modifyMode === 'cut'}
+					{cutPosition}
+					coupleMode={activeMenu === 'modify' && modifyMode === 'couple'}
+					{coupleEnd}
 				/>
 			</Canvas>
 		{/if}
@@ -206,6 +264,10 @@
 		<button class="fab" class:active={activeMenu === 'bending'} onclick={() => activeMenu = activeMenu === 'bending' ? null : 'bending'}>
 			<span class="icon">🔄</span>
 			<span class="label">Bending</span>
+		</button>
+		<button class="fab" class:active={activeMenu === 'modify'} onclick={() => activeMenu = activeMenu === 'modify' ? null : 'modify'}>
+			<span class="icon">✂️</span>
+			<span class="label">Modify</span>
 		</button>
 		<button class="fab" class:active={activeMenu === 'transform'} onclick={() => activeMenu = activeMenu === 'transform' ? null : 'transform'}>
 			<span class="icon">🕹️</span>
@@ -286,7 +348,7 @@
 						aria-label={activeAttribute}
 						aria-valuenow={bends[activeBendIndex][activeAttribute]}
 						aria-valuemin={activeAttribute === 'position' ? 0 : activeAttribute === 'angle' ? -110 : 0}
-						aria-valuemax={activeAttribute === 'position' ? 120 : activeAttribute === 'angle' ? 110 : 360}
+						aria-valuemax={activeAttribute === 'position' ? totalLength : activeAttribute === 'angle' ? 110 : 360}
 						onpointerdown={(e) => handlePointerDown(e, 'bend', activeAttribute)} 
 						onpointermove={handlePointerMove} 
 						onpointerup={handlePointerUp}
@@ -329,6 +391,69 @@
 						{/if}
 					</div>
 				</div>
+			</div>
+
+		{:else if renderedMenu === 'modify'}
+			<div class="menu-content">
+				<h3>Modify Length</h3>
+
+				<!-- Attribute Tabs -->
+				<div class="attribute-tabs" style="margin-bottom: 12px;">
+					<button class:active={modifyMode === 'cut'} onclick={() => modifyMode = 'cut'}>✂️ Cut</button>
+					<button class:active={modifyMode === 'couple'} onclick={() => modifyMode = 'couple'}>🔗 Couple</button>
+				</div>
+
+				{#if modifyMode === 'cut'}
+					<div class="custom-slider-container">
+						<div 
+							class="drag-pad" 
+							role="slider"
+							tabindex="0"
+							aria-label="Cut Position"
+							aria-valuenow={cutPosition}
+							aria-valuemin={0}
+							aria-valuemax={totalLength}
+							onpointerdown={(e) => handlePointerDown(e, 'modify', 'cutPosition')} 
+							onpointermove={handlePointerMove} 
+							onpointerup={handlePointerUp}
+							onpointercancel={handlePointerUp}
+							onpointerleave={handlePointerUp}
+							onkeydown={(e) => handleKeyDown(e, 'modify', 'cutPosition')}
+						>
+							<div class="drag-value">
+								{cutPosition.toFixed(2)}"
+							</div>
+						</div>
+					</div>
+
+					<div class="quick-select-wrapper">
+						<div class="quick-select">
+							<button onclick={() => addCutPosition(12)}>+12"</button>
+							<button onclick={() => addCutPosition(1)}>+1"</button>
+							<button onclick={() => addCutPosition(-12)}>-12"</button>
+							<button onclick={() => addCutPosition(-1)}>-1"</button>
+							<button onclick={() => addCutPosition(0.125)}>+1/8"</button>
+							<button onclick={() => addCutPosition(-0.125)}>-1/8"</button>
+						</div>
+					</div>
+
+					<button class="action-btn" style="width: 100%; margin-top: 12px; background: #cc0000; color: white; padding: 12px; font-weight: bold; border-radius: 8px; border: none; font-size: 1.1rem; cursor: pointer;" onclick={executeCut}>
+						CUT PIPE
+					</button>
+
+				{:else if modifyMode === 'couple'}
+					<div class="selector-group" style="margin-top: 12px;">
+						<div class="section-label">Select End to Couple</div>
+						<div class="button-grid" style="grid-template-columns: 1fr 1fr;">
+							<button class:active={coupleEnd === 1} onclick={() => coupleEnd = 1}>End 1 (Start)</button>
+							<button class:active={coupleEnd === 2} onclick={() => coupleEnd = 2}>End 2 (End)</button>
+						</div>
+					</div>
+
+					<button class="action-btn" style="width: 100%; margin-top: 12px; background: #1e90ff; color: white; padding: 12px; font-weight: bold; border-radius: 8px; border: none; font-size: 1.1rem; cursor: pointer;" onclick={executeCouple}>
+						ADD 10FT SECTION
+					</button>
+				{/if}
 			</div>
 
 		{:else if renderedMenu === 'transform'}

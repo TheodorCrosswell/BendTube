@@ -15,6 +15,12 @@
 
 	type ExtendedProps = BenderSceneProps & {
 		pipeTransform?: { posX: number; posY: number; posZ: number; rotX: number; rotY: number; rotZ: number };
+		totalLength?: number;
+		couplings?: { position: number }[];
+		cutMode?: boolean;
+		cutPosition?: number;
+		coupleMode?: boolean;
+		coupleEnd?: 1 | 2;
 	};
 
 	let {
@@ -35,7 +41,13 @@
 			depth: 0,
 			totalDegrees: 0
 		}),
-		pipeTransform = $bindable({ posX: 0, posY: 0, posZ: 0, rotX: 0, rotY: 0, rotZ: 0 })
+		pipeTransform = $bindable({ posX: 0, posY: 0, posZ: 0, rotX: 0, rotY: 0, rotZ: 0 }),
+		totalLength = 120,
+		couplings = [],
+		cutMode = false,
+		cutPosition = 60,
+		coupleMode = false,
+		coupleEnd = 2
 	}: ExtendedProps = $props();
 
 	interactivity();
@@ -56,14 +68,45 @@
 	let deduction = $derived(getBenderDeduction(conduitSize));
 
 	let textTexture = $derived(generateConduitTexture(conduitSize, conduitType));
-	let curve = $derived(new ConduitCurve(bends, bendRadius, pipeRadius, deduction));
+	let curve = $derived(new ConduitCurve(bends, bendRadius, pipeRadius, deduction, totalLength));
+
+	// Derived logic for Cut Mode visuals
+	let cutT = $derived(totalLength > 0 ? cutPosition / totalLength : 0);
+	let cutPos = $derived(curve.getPoint(cutT));
+	let cutTangent = $derived.by(() => {
+		const delta = 0.001;
+		const t1 = Math.max(0, cutT - delta);
+		const t2 = Math.min(1, cutT + delta);
+		const p1 = curve.getPoint(t1);
+		const p2 = curve.getPoint(t2);
+		let t = new THREE.Vector3().subVectors(p2, p1).normalize();
+		if (t.lengthSq() === 0) t.set(1, 0, 0);
+		return t;
+	});
+	let cutQuat = $derived.by(() => {
+		return new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), cutTangent);
+	});
+
+	// Derived logic for Couple Mode visuals
+	let couplePos = $derived(curve.getPoint(coupleEnd === 1 ? 0 : 1));
+	let coupleTangent = $derived.by(() => {
+		const delta = 0.001;
+		const p1 = curve.getPoint(coupleEnd === 1 ? delta : 1 - delta);
+		const p2 = curve.getPoint(coupleEnd === 1 ? 0 : 1);
+		let t = new THREE.Vector3().subVectors(p2, p1).normalize();
+		if (t.lengthSq() === 0) t.set(1, 0, 0);
+		return t;
+	});
+	let coupleQuat = $derived.by(() => {
+		return new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), coupleTangent);
+	});
 
 	let marks = $derived.by(() => {
 		return bends.map((bend, index) => {
 			const t = bend.position / curve.totalLen;
 			const pos = curve.getPoint(t);
 
-			const pos2 = curve.getPoint(t + 0.001);
+			const pos2 = curve.getPoint(Math.min(t + 0.001, 1));
 			const tangent = new THREE.Vector3().subVectors(pos2, pos).normalize();
 
 			if (tangent.lengthSq() === 0) {
@@ -173,8 +216,6 @@
 		] as [number, number, number];
 	});
 
-	// Converts the local tool position to world position so the camera can correctly track it
-	// even when the entire pipe structure is translated/rotated
 	let worldToolPos = $derived.by(() => {
 		const localVec = new THREE.Vector3(toolPos[0], toolPos[1], toolPos[2]);
 		const euler = new THREE.Euler(
@@ -266,13 +307,13 @@
 		}
 
 		const sortedFrames = [...curve.bendFrames].sort((a, b) => a.L1 - b.L1);
-		let beforeBend = 120;
+		let beforeBend = totalLength;
 		let afterBend = 0;
 
 		if (sortedFrames.length > 0) {
 			beforeBend = Math.max(0, sortedFrames[0].L1);
 			const lastFrame = sortedFrames[sortedFrames.length - 1];
-			afterBend = Math.max(0, 120 - (lastFrame.L1 + lastFrame.bend.arcLen));
+			afterBend = Math.max(0, totalLength - (lastFrame.L1 + lastFrame.bend.arcLen));
 		}
 
 		stats = {
@@ -315,33 +356,33 @@
 {/if}
 
 <Grid
-	gridSize={[120, 120]}
+	gridSize={[2400, 2400]}
 	sectionSize={12}
 	cellSize={1}
 	position={[60, 0, 0]}
 	sectionColor="#888888"
 	cellColor="#444444"
-	fadeDistance={250}
+	fadeDistance={1000}
 />
 <Grid
-	gridSize={[120, 120]}
+	gridSize={[2400, 2400]}
 	sectionSize={12}
 	cellSize={1}
 	position={[60, 60, 0]}
 	rotation.x={Math.PI / 2}
 	sectionColor="#888888"
 	cellColor="#444444"
-	fadeDistance={250}
+	fadeDistance={1000}
 />
 <Grid
-	gridSize={[120, 120]}
+	gridSize={[2400, 2400]}
 	sectionSize={12}
 	cellSize={1}
 	position={[60, 60, 0]}
 	rotation.z={Math.PI / 2}
 	sectionColor="#888888"
 	cellColor="#444444"
-	fadeDistance={250}
+	fadeDistance={1000}
 />
 
 <!-- Master Transformation Group -->
@@ -355,9 +396,56 @@
 >
 	<T.Group position={[0, pipeRadius, pipeRadius]}>
 		<T.Mesh onclick={onConduitClick}>
-			<T.TubeGeometry bind:ref={tubeGeom} args={[curve, 100, pipeRadius, 12, false]} />
+			<!-- Adjusted resolution for heavily coupled geometries -->
+			<T.TubeGeometry bind:ref={tubeGeom} args={[curve, Math.floor(totalLength), pipeRadius, 12, false]} />
 			<T.MeshBasicMaterial color={textTexture ? '#ffffff' : '#999999'} map={textTexture || null} />
 		</T.Mesh>
+
+		<!-- Couplings -->
+		{#each couplings as coupling (coupling.position)}
+			{@const cT = totalLength > 0 ? coupling.position / totalLength : 0}
+			{@const cPos = curve.getPoint(cT)}
+			{@const t1 = Math.max(0, cT - 0.001)}
+			{@const t2 = Math.min(1, cT + 0.001)}
+			{@const p1 = curve.getPoint(t1)}
+			{@const p2 = curve.getPoint(t2)}
+			{@const cTangent = new THREE.Vector3().subVectors(p2, p1).normalize()}
+			{@const cQuat = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), cTangent.lengthSq() > 0 ? cTangent : new THREE.Vector3(1,0,0))}
+			
+			<T.Group position={cPos.toArray()} quaternion={cQuat.toArray()}>
+				<T.Mesh>
+					<T.CylinderGeometry args={[pipeRadius + 0.08, pipeRadius + 0.08, 2.5, 32]} />
+					<T.MeshStandardMaterial color="#cccccc" metalness={0.6} roughness={0.4} />
+				</T.Mesh>
+			</T.Group>
+		{/each}
+
+		{#if cutMode}
+			<!-- Red Ring aligned with the pipe cut -->
+			<T.Group position={cutPos.toArray()} quaternion={cutQuat.toArray()}>
+				<T.Mesh>
+					<T.CylinderGeometry args={[pipeRadius + 0.05, pipeRadius + 0.05, 0.5, 32]} />
+					<T.MeshBasicMaterial color="#ff0000" />
+				</T.Mesh>
+			</T.Group>
+			<!-- Red Arrow pointing straight down from above -->
+			<T.Group position={cutPos.toArray()}>
+				<T.Mesh position={[0, pipeRadius + 2.5, 0]} rotation={[Math.PI, 0, 0]}>
+					<T.ConeGeometry args={[0.8, 3, 16]} />
+					<T.MeshBasicMaterial color="#ff0000" />
+				</T.Mesh>
+			</T.Group>
+		{/if}
+
+		{#if coupleMode}
+			<!-- Red Arrow pointing squarely at the open face of the pipe end -->
+			<T.Group position={couplePos.toArray()} quaternion={coupleQuat.toArray()}>
+				<T.Mesh position={[0, 2.0, 0]} rotation={[Math.PI, 0, 0]}>
+					<T.ConeGeometry args={[0.8, 3, 16]} />
+					<T.MeshBasicMaterial color="#ff0000" />
+				</T.Mesh>
+			</T.Group>
+		{/if}
 
 		<!-- Bend Marks -->
 		{#each marks as mark (mark.index)}
