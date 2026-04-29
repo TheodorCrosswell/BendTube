@@ -702,16 +702,25 @@
 	{#each marks as mark (mark.index)}
 		<T.Group position={mark.pos} quaternion={mark.quat}>
 			<!-- 1/8" thick physical Sharpie ring sliding slightly hovering the conduit to avoid z-fighting -->
-			<T.Mesh>
+			<T.Mesh
+				onclick={(e) => {
+					e.stopPropagation();
+					activeBendIndex = mark.index;
+				}}
+			>
 				<T.CylinderGeometry args={[pipeRadius + 0.02, pipeRadius + 0.02, 0.125, 32]} />
-				<T.MeshBasicMaterial color="#111111" />
+				<T.MeshBasicMaterial color={activeBendIndex === mark.index ? '#1e90ff' : '#111111'} />
 			</T.Mesh>
 
 			<!-- Floating Indicator Label -->
 			<HTML center>
-				<!-- svelte-ignore a11y_click_events_have_key_events -->
 				<!-- svelte-ignore a11y_no_static_element_interactions -->
+				<!-- svelte-ignore a11y_click_events_have_key_events -->
 				<div
+					onpointerdown={(e) => {
+						e.stopPropagation();
+						activeBendIndex = mark.index;
+					}}
 					onclick={(e) => {
 						e.stopPropagation();
 						activeBendIndex = mark.index;
